@@ -181,6 +181,7 @@ import io.ballerina.flowmodelgenerator.core.utils.ConnectorUtil;
 import io.ballerina.flowmodelgenerator.core.utils.FileSystemUtils;
 import io.ballerina.flowmodelgenerator.core.utils.FlowNodeUtil;
 import io.ballerina.flowmodelgenerator.core.utils.ParamUtils;
+import io.ballerina.flowmodelgenerator.core.utils.WorkflowUtil;
 import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.FunctionData;
 import io.ballerina.modelgenerator.commons.FunctionDataBuilder;
@@ -505,6 +506,9 @@ public class CodeAnalyzer extends NodeVisitor {
         if (isWorkflowCtxOperation(remoteMethodCallActionNode, classSymbol, CALL_ACTIVITY_METHOD_NAME)) {
             String builtinSymbol = resolveBuiltinActivitySymbol(remoteMethodCallActionNode.arguments());
             if (builtinSymbol != null) {
+                // Builtin activities always wrap a connection (http/soap/email client), so model them
+                // as a connection-backed activity call — the diagram renders these with a connection arrow.
+                nodeBuilder.codedata().node(NodeKind.CONNECTION_ACTIVITY_CALL);
                 // Builtin: symbol is the actual function name (callRestAPI/callSoapAPI/sendEmail).
                 nodeBuilder.codedata().symbol(builtinSymbol);
                 nodeBuilder.codedata().module(ACTIVITY_MODULE);
@@ -1037,12 +1041,32 @@ public class CodeAnalyzer extends NodeVisitor {
         }
 
         // Step 4: Add flat properties for each activity function parameter, setting values from the args map.
+        // An activity whose first parameter is a connection client (generated from a connection) is
+        // modelled as a connection-backed activity call: the connection is stored under CONNECTION_KEY
+        // (not as a plain data arg) and the node kind switched so the diagram draws a connection arrow.
+        boolean firstParam = true;
         for (ParameterSymbol paramSymbol : activityParamSymbols) {
             String paramName = paramSymbol.getName().orElse("");
             if (paramName.isEmpty()) {
                 continue;
             }
             Node valueNode = argsValues.get(paramName);
+            if (firstParam) {
+                firstParam = false;
+                Optional<ClassSymbol> connectionClass =
+                        WorkflowUtil.resolveConnectionClass(paramSymbol.typeDescriptor());
+                if (connectionClass.isPresent() && valueNode instanceof ExpressionNode connectionExpr) {
+                    nodeBuilder.codedata().node(NodeKind.CONNECTION_ACTIVITY_CALL);
+                    nodeBuilder.properties().callConnection(connectionExpr, Property.CONNECTION_KEY,
+                            getConnectorMetadata(connectionClass.get()));
+                    connectionClass.get().getModule().ifPresent(module -> {
+                        ModuleID id = module.id();
+                        nodeBuilder.metadata().icon(
+                                CommonUtils.generateIcon(id.orgName(), id.packageName(), id.version()));
+                    });
+                    continue;
+                }
+            }
             String value = valueNode != null ? valueNode.toSourceCode().strip() : null;
             boolean isOptional = paramSymbol.paramKind() == ParameterKind.DEFAULTABLE;
             String kind = isOptional ? ParameterData.Kind.DEFAULTABLE.name() : ParameterData.Kind.REQUIRED.name();
@@ -1340,6 +1364,8 @@ public class CodeAnalyzer extends NodeVisitor {
                 connValue,
                 strategy != null ? strategy.searchNodesKind() : null,
                 strategy != null ? strategy.connectors() : null);
+        // Show the connector icon on the connection arrow the diagram draws for this node.
+        applyActivityConnectionIcon(connValue);
 
         switch (builtinSymbol) {
             case BUILTIN_REST_FUNCTION -> populateRestProperties(srcValues);
@@ -2077,6 +2103,31 @@ public class CodeAnalyzer extends NodeVisitor {
         Map<String, Object> connectorData = new HashMap<>();
         connectorData.put(CONNECTOR_TYPE, ConnectorUtil.getConnectionCategory(moduleName));
         return connectorData;
+    }
+
+    /**
+     * Sets the node icon to the connector icon of the module-level connection variable named
+     * {@code connectionName}, so the connection arrow the diagram renders for a connection-backed
+     * activity call shows the right connector. Best-effort: does nothing if the variable or its
+     * client type cannot be resolved.
+     */
+    private void applyActivityConnectionIcon(String connectionName) {
+        if (connectionName == null || connectionName.isEmpty()) {
+            return;
+        }
+        for (Symbol symbol : semanticModel.moduleSymbols()) {
+            if (symbol.kind() != SymbolKind.VARIABLE || !connectionName.equals(symbol.getName().orElse(""))) {
+                continue;
+            }
+            WorkflowUtil.resolveConnectionClass(((VariableSymbol) symbol).typeDescriptor())
+                    .flatMap(Symbol::getModule)
+                    .ifPresent(module -> {
+                        ModuleID id = module.id();
+                        nodeBuilder.metadata().icon(
+                                CommonUtils.generateIcon(id.orgName(), id.packageName(), id.version()));
+                    });
+            return;
+        }
     }
 
     private void addRemainingParamsToPropertyMap(Map<String, ParameterData> funcParamMap,

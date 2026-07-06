@@ -121,9 +121,32 @@ public class ActivityCallBuilder extends CallBuilder {
     // (called during the advanced-parameter iteration) and buildBuiltinTemplate.
     private BuiltinActivityStrategy currentBuiltinStrategy;
 
+    // For user-defined activities: tracks whether the leading connection-client parameter has been
+    // seen/handled (only the first parameter is treated as the connection) and whether this activity
+    // is therefore connection-backed (so the node kind is switched to CONNECTION_ACTIVITY_CALL).
+    private boolean userActivityConnectionAssigned;
+    private boolean userActivityConnectionBacked;
+
     @Override
     protected NodeKind getFunctionNodeKind() {
         return NodeKind.ACTIVITY_CALL;
+    }
+
+    /**
+     * {@link NodeBuilder#build()} re-invokes {@code setConstData()} after the template/analysis has run,
+     * which would otherwise reset the node kind back to {@code ACTIVITY_CALL}. Preserve the
+     * connection-backed kind when it has been chosen — either by the builtin/user-connection template
+     * path (via the flags) or by the analysis path (which sets the node kind on the codedata directly
+     * before {@code build()}).
+     */
+    @Override
+    public void setConcreteConstData() {
+        if (currentBuiltinStrategy != null || userActivityConnectionBacked
+                || codedata().node() == NodeKind.CONNECTION_ACTIVITY_CALL) {
+            codedata().node(NodeKind.CONNECTION_ACTIVITY_CALL);
+        } else {
+            codedata().node(NodeKind.ACTIVITY_CALL);
+        }
     }
 
     @Override
@@ -141,7 +164,13 @@ public class ActivityCallBuilder extends CallBuilder {
         if (currentBuiltinStrategy != null) {
             buildBuiltinTemplate(context, codedata.symbol(), currentBuiltinStrategy);
         } else {
+            userActivityConnectionAssigned = false;
+            userActivityConnectionBacked = false;
             super.setConcreteTemplateData(context);
+            if (userActivityConnectionBacked) {
+                // Leading parameter is a connection client — render this call with a connection arrow.
+                codedata().node(NodeKind.CONNECTION_ACTIVITY_CALL);
+            }
             addRetryPolicyFormProperties(this, NO_RETRY_VALUE, "", "", "", "");
             addAdvancedParameters(context, moduleInfo, this);
         }
@@ -158,7 +187,9 @@ public class ActivityCallBuilder extends CallBuilder {
      */
     private void buildBuiltinTemplate(TemplateContext context, String symbol, BuiltinActivityStrategy strategy) {
         metadata().label(strategy.getLabel()).description(strategy.getDescription());
-        codedata().node(NodeKind.ACTIVITY_CALL)
+        // Builtin activities wrap a connection, so they are modelled as connection-backed activity
+        // calls — the diagram renders these with a connection arrow (like remote action calls).
+        codedata().node(NodeKind.CONNECTION_ACTIVITY_CALL)
                 .org(WORKFLOW_ORG)
                 .module(ACTIVITY_MODULE)
                 .symbol(symbol);
@@ -244,6 +275,16 @@ public class ActivityCallBuilder extends CallBuilder {
     @Override
     protected boolean processSpecialParameter(ParameterData paramData) {
         if (currentBuiltinStrategy == null) {
+            // User-defined activity: treat a leading connection-client parameter as a connection
+            // selector (like builtin activities) so the diagram links the call to the connection.
+            if (!userActivityConnectionAssigned) {
+                userActivityConnectionAssigned = true;
+                if (WorkflowUtil.resolveConnectionClass(paramData.typeSymbol()).isPresent()) {
+                    userActivityConnectionBacked = true;
+                    properties().connectionSelector(NEW_CONNECTION_SENTINEL, null, null);
+                    return true;
+                }
+            }
             return false;
         }
 
