@@ -264,15 +264,15 @@
       {
         "range": {
           "start": {
-            "line": 0,
-            "character": 0
+            "line": 1,
+            "character": 1
           },
           "end": {
-            "line": 0,
-            "character": 0
+            "line": 1,
+            "character": 1
           }
         },
-        "newText": "# Fetch the latest currency rates\n# + connection - Connection to invoke the action on\n# + base - The base value\n# + symbols - The symbols value\n# + return - Type of the variable\n@workflow:Activity\n@display {label: \"\", iconPath: \"https://bcentral-packageicons.azureedge.net/images/ballerina_http_2.13.2.png\"}\nisolated function fetchLatestRates(http:Client connection, string base, string symbols) returns json|error {\n    json response = check connection->get(\"/latest?base=\" + base + \"&symbols=\" + symbols);\n    return response;\n}"
+        "newText": "# Fetch the latest currency rates\n# + connection - Connection to invoke the action on\n# + base - The base value\n# + symbols - The symbols value\n# + return - Type of the variable\n@workflow:Activity\n@display {label: \"\", iconPath: \"https://bcentral-packageicons.azureedge.net/images/ballerina_http_2.13.2.png\"}\nisolated function fetchLatestRates(http:Client connection, string base, string symbols) returns json|error {\n    json result = check connection->get(\"/latest?base=\" + base + \"&symbols=\" + symbols);\n    return result;\n}"
       }
     ]
   }

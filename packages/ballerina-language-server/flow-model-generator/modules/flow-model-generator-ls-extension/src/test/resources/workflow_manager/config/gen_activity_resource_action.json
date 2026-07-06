@@ -215,15 +215,15 @@
       {
         "range": {
           "start": {
-            "line": 0,
-            "character": 0
+            "line": 1,
+            "character": 1
           },
           "end": {
-            "line": 0,
-            "character": 0
+            "line": 1,
+            "character": 1
           }
         },
-        "newText": "# Get rates for a user\n# + connection - Connection to invoke the action on\n# + userId - The userId value\n# + return - Type of the variable\n@workflow:Activity\n@display {label: \"\", iconPath: \"https://bcentral-packageicons.azureedge.net/images/ballerina_http_2.13.2.png\"}\nisolated function getUserRates(http:Client connection, string userId) returns json|error {\n    json rates = check connection->/users/[userId]/rates.get();\n    return rates;\n}"
+        "newText": "# Get rates for a user\n# + connection - Connection to invoke the action on\n# + userId - The userId value\n# + return - Type of the variable\n@workflow:Activity\n@display {label: \"\", iconPath: \"https://bcentral-packageicons.azureedge.net/images/ballerina_http_2.13.2.png\"}\nisolated function getUserRates(http:Client connection, string userId) returns json|error {\n    json result = check connection->/users/[userId]/rates.get();\n    return result;\n}"
       }
     ]
   }

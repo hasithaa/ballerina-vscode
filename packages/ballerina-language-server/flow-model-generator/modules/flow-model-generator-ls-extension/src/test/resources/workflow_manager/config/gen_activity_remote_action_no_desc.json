@@ -187,15 +187,15 @@
       {
         "range": {
           "start": {
-            "line": 0,
-            "character": 0
+            "line": 1,
+            "character": 1
           },
           "end": {
-            "line": 0,
-            "character": 0
+            "line": 1,
+            "character": 1
           }
         },
-        "newText": "@workflow:Activity\n@display {label: \"\", iconPath: \"https://bcentral-packageicons.azureedge.net/images/ballerina_http_2.13.2.png\"}\nisolated function publishRates(http:Client connection) returns json|error {\n    json response = check connection->post(\"/rates\", {\"rate\": 1.5});\n    return response;\n}"
+        "newText": "@workflow:Activity\n@display {label: \"\", iconPath: \"https://bcentral-packageicons.azureedge.net/images/ballerina_http_2.13.2.png\"}\nisolated function publishRates(http:Client connection) returns json|error {\n    json result = check connection->post(\"/rates\", {\"rate\": 1.5});\n    return result;\n}"
       }
     ]
   }
