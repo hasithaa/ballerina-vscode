@@ -650,6 +650,16 @@ export class NodeFactoryVisitor implements BaseVisitor {
         }
     }
 
+    beginVisitConnectionActivityCall(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        if (node.id) {
+            // Connection-backed activity calls render as API-call nodes so the diagram draws a
+            // connection arrow to the connection, like remote action calls.
+            this.createApiCallNode(node);
+            this.addSuggestionsButton(node);
+        }
+    }
+
     beginVisitWorkflowRun(node: FlowNode, parent?: FlowNode): void {
         if (!this.validateNode(node)) return;
         if (node.id) {
