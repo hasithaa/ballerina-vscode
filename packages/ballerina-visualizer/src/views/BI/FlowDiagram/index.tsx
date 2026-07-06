@@ -2343,6 +2343,17 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             });
     };
 
+    const handleOnAddActivityFromConnection = () => {
+        pushToNavigationStack(sidePanelView, categories, selectedNodeRef.current, selectedClientName.current);
+        setSidePanelView(SidePanelView.ACTIVITY_FROM_CONNECTION);
+        setShowSidePanel(true);
+    };
+
+    const handleActivityFromConnectionCreated = async () => {
+        // Refresh the activity list so the generated activity shows up for selection
+        await handleActivityAdded();
+    };
+
     const handleOnAddActivity = () => {
         isCreatingNewActivity.current = true;
         setShowProgressIndicator(true);
@@ -3284,6 +3295,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 onAddFunction={handleOnAddFunction}
                 onAddWorkflow={handleOnAddWorkflow}
                 onAddActivity={handleOnAddActivity}
+                onAddActivityFromConnection={handleOnAddActivityFromConnection}
+                onActivityFromConnectionCreated={handleActivityFromConnectionCreated}
                 onAddNPFunction={handleOnAddNPFunction}
                 onAddDataMapper={handleOnAddDataMapper}
                 onAddModelProvider={handleOnAddNewModelProvider}
