@@ -32,11 +32,16 @@ import io.ballerina.compiler.api.symbols.SymbolKind;
 import io.ballerina.compiler.api.symbols.TypeDefinitionSymbol;
 import io.ballerina.compiler.api.symbols.TypeDescKind;
 import io.ballerina.compiler.api.symbols.TypeSymbol;
+import io.ballerina.flowmodelgenerator.core.ActivityGenerator;
 import io.ballerina.flowmodelgenerator.core.utils.FileSystemUtils;
 import io.ballerina.flowmodelgenerator.core.utils.TypeUtils;
 import io.ballerina.flowmodelgenerator.core.utils.WorkflowUtil;
+import io.ballerina.flowmodelgenerator.extension.request.GenActivityRequest;
 import io.ballerina.flowmodelgenerator.extension.request.GetAllDataRequest;
+import io.ballerina.flowmodelgenerator.extension.response.GenActivityResponse;
 import io.ballerina.flowmodelgenerator.extension.response.GetAllDataResponse;
+import io.ballerina.modelgenerator.commons.ModuleInfo;
+import io.ballerina.projects.Module;
 import org.ballerinalang.annotation.JavaSPIService;
 import org.ballerinalang.langserver.commons.service.spi.ExtendedLanguageServerService;
 import org.ballerinalang.langserver.commons.workspace.WorkspaceManager;
@@ -105,6 +110,38 @@ public class WorkflowManagerService implements ExtendedLanguageServerService {
 
                 response.setData(dataArray);
             } catch (Exception e) {
+                response.setError(e);
+            }
+            return response;
+        });
+    }
+
+    /**
+     * Generates a {@code @workflow:Activity} function that wraps a connection action call, following
+     * the built-in activity pattern: the connection is the first parameter of the activity function.
+     *
+     * @param request The request containing the action call flow node, activity name/description,
+     *                activity parameters and the source connection name
+     * @return Response containing the text edits to apply
+     */
+    @JsonRequest
+    public CompletableFuture<GenActivityResponse> genActivity(GenActivityRequest request) {
+        return CompletableFuture.supplyAsync(() -> {
+            GenActivityResponse response = new GenActivityResponse();
+            try {
+                Path filePath = Path.of(request.filePath());
+                this.workspaceManager.loadProject(filePath);
+                Optional<SemanticModel> semanticModel = this.workspaceManager.semanticModel(filePath);
+                Optional<Module> module = this.workspaceManager.module(filePath);
+                if (semanticModel.isEmpty() || module.isEmpty()) {
+                    return response;
+                }
+                ActivityGenerator activityGenerator = new ActivityGenerator(semanticModel.get(),
+                        ModuleInfo.from(module.get().descriptor()));
+                response.setTextEdits(activityGenerator.genActivity(request.flowNode(), request.activityName(),
+                        request.activityParameters(), request.connection(), request.description(), filePath,
+                        this.workspaceManager));
+            } catch (Throwable e) {
                 response.setError(e);
             }
             return response;
