@@ -446,6 +446,8 @@ export function PanelManager(props: PanelManagerProps) {
                     <NewActivityFromConnection
                         fileName={fileName}
                         onActivityCreated={onActivityFromConnectionCreated}
+                        onBack={canGoBack ? onBack : undefined}
+                        onClose={onClose}
                     />
                 );
 

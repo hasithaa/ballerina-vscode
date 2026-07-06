@@ -2349,9 +2349,49 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         setShowSidePanel(true);
     };
 
-    const handleActivityFromConnectionCreated = async () => {
-        // Refresh the activity list so the generated activity shows up for selection
-        await handleActivityAdded();
+    const handleActivityFromConnectionCreated = async (activityName: string) => {
+        // After the activity function is generated, open its call form at the current workflow
+        // position so the activity is added to the workflow logic (not just listed).
+        setShowProgressIndicator(true);
+        try {
+            const response = await rpcClient.getBIDiagramRpcClient().search({
+                position: { startLine: targetRef.current.startLine, endLine: targetRef.current.endLine },
+                filePath: model?.fileName,
+                queryMap: undefined,
+                searchKind: "ACTIVITY_CALL",
+            });
+            const panelCategories = convertFunctionCategoriesToSidePanelCategories(
+                response.categories as Category[],
+                FUNCTION_TYPE.REGULAR
+            );
+            const currentIntegrationCategory = findCurrentIntegrationCategory(panelCategories);
+            const newActivityNode = (currentIntegrationCategory?.items || [])
+                .map((item) => (item && "metadata" in item ? (item.metadata as AvailableNode) : undefined))
+                .find((node) => node?.codedata?.symbol === activityName);
+
+            if (newActivityNode) {
+                const template = await rpcClient.getBIDiagramRpcClient().getNodeTemplate({
+                    position: targetRef.current.startLine,
+                    filePath: model?.fileName,
+                    id: newActivityNode.codedata,
+                });
+                selectedNodeRef.current = template.flowNode;
+                nodeTemplateRef.current = template.flowNode;
+                showEditForm.current = false;
+                // The activity list frame pushed on entry stays on the stack, so the form's back
+                // button returns to the activity list.
+                setSidePanelView(SidePanelView.FORM);
+                setShowSidePanel(true);
+                return;
+            }
+            // Fallback: could not resolve the new activity — just refresh the activity list.
+            await handleActivityAdded();
+        } catch (error) {
+            console.error(">>> Error opening call form for the created activity", error);
+            await handleActivityAdded();
+        } finally {
+            setShowProgressIndicator(false);
+        }
     };
 
     const handleOnAddActivity = () => {

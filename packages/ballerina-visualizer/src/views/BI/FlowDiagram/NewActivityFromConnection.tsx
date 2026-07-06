@@ -112,6 +112,10 @@ interface NewActivityFromConnectionProps {
     fileName: string;
     /** Called after the activity function is generated and applied. */
     onActivityCreated: (activityName: string) => void;
+    /** Navigate back to the activity list (from the connection list). */
+    onBack?: () => void;
+    /** Close the side panel. */
+    onClose?: () => void;
 }
 
 /**
@@ -122,7 +126,7 @@ interface NewActivityFromConnectionProps {
  * agent "create tool from connection" flow.
  */
 export function NewActivityFromConnection(props: NewActivityFromConnectionProps): JSX.Element {
-    const { fileName, onActivityCreated } = props;
+    const { fileName, onActivityCreated, onBack, onClose } = props;
     const { rpcClient } = useRpcContext();
 
     const [panelView, setPanelView] = useState<PanelView>(PanelView.CONNECTION_LIST);
@@ -337,11 +341,6 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
             clonedFlowNode.properties = newProperties as NodeProperties;
         }
 
-        if (clonedFlowNode.properties?.variable?.value === "") {
-            clonedFlowNode.properties.variable.value =
-                flowNodeRef.current?.properties?.variable?.value || cleanName + "Result";
-        }
-
         // Merge parameter type imports onto a flowNode property so genActivity includes them
         const paramImports = formImports ? getImportsForProperty("parameters", formImports) : undefined;
         if (paramImports && clonedFlowNode.properties) {
@@ -393,6 +392,8 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 <NodeList
                     categories={categories}
                     onSelect={handleOnSelectNode}
+                    onClose={onClose}
+                    onBack={onBack}
                     title={"Connections"}
                     searchPlaceholder={"Search connections"}
                     panelBodySx={{ height: "calc(100vh - 140px)" }}
@@ -406,6 +407,7 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                     fields={fields}
                     recordTypeFields={recordTypeFields}
                     onSubmit={handleActivitySubmit}
+                    onBack={() => setPanelView(PanelView.CONNECTION_LIST)}
                     submitText={"Create Activity"}
                     helperPaneSide="left"
                     customDiagnosticFilter={customDiagnosticFilter}
