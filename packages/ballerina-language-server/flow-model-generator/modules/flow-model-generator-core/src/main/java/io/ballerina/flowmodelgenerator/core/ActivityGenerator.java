@@ -32,12 +32,15 @@ import io.ballerina.flowmodelgenerator.core.model.Property;
 import io.ballerina.flowmodelgenerator.core.model.PropertyCodedata;
 import io.ballerina.flowmodelgenerator.core.model.SourceBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.ActivityBuilder;
+import io.ballerina.flowmodelgenerator.core.utils.FileSystemUtils;
 import io.ballerina.flowmodelgenerator.core.utils.FlowNodeUtil;
 import io.ballerina.flowmodelgenerator.core.utils.ParamUtils;
 import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.ModuleInfo;
 import io.ballerina.modelgenerator.commons.ParameterData;
+import io.ballerina.projects.Document;
 import org.ballerinalang.langserver.commons.workspace.WorkspaceManager;
+import org.eclipse.lsp4j.Range;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -59,6 +62,11 @@ public class ActivityGenerator {
 
     public static final String CONNECTION_PARAM_NAME = "connection";
     private static final String CONNECTION_PARAM_DOC = "Connection to invoke the action on";
+    // Short, conventional name for the result variable inside the generated activity body.
+    private static final String RESULT_VARIABLE = "result";
+    // Fallback databinding type when the action's return type is ambiguous (see normalizeReturnType).
+    private static final String DEFAULT_RETURN_TYPE = "json";
+    private static final String ERROR_UNION_SUFFIX = "|error";
 
     private final Gson gson;
     private final SemanticModel semanticModel;
@@ -118,7 +126,8 @@ public class ActivityGenerator {
         String returnType = "";
         if (optReturnType.isPresent()) {
             Property returnProperty = optReturnType.get();
-            returnType = AgentsGenerator.resolveReturnType(flowNode, returnProperty, sourceBuilder);
+            returnType = normalizeReturnType(
+                    AgentsGenerator.resolveReturnType(flowNode, returnProperty, sourceBuilder));
             if (hasDescription) {
                 sourceBuilder.token().returnDoc(returnProperty.metadata().description());
             }
@@ -148,11 +157,16 @@ public class ActivityGenerator {
             sourceBuilder.token().keyword(SyntaxKind.RETURNS_KEYWORD).name("error?");
         }
 
-        // Body: invoke the action on the connection parameter
+        // Body: invoke the action on the connection parameter. Use a short, fixed result variable
+        // name ("result") since it is local to the generated function body.
         sourceBuilder.token().keyword(SyntaxKind.OPEN_BRACE_TOKEN);
         if (!returnType.isEmpty()) {
-            sourceBuilder.token().expressionWithType(returnType,
-                    flowNode.getProperty(Property.VARIABLE_KEY).orElseThrow()).keyword(SyntaxKind.EQUAL_TOKEN);
+            sourceBuilder.token()
+                    .name(returnType)
+                    .whiteSpace()
+                    .name(RESULT_VARIABLE)
+                    .whiteSpace()
+                    .keyword(SyntaxKind.EQUAL_TOKEN);
         }
         if (hasCheckError) {
             sourceBuilder.token().keyword(SyntaxKind.CHECK_KEYWORD);
@@ -181,15 +195,40 @@ public class ActivityGenerator {
         if (!returnType.isEmpty()) {
             sourceBuilder.token()
                     .keyword(SyntaxKind.RETURN_KEYWORD)
-                    .name(flowNode.getProperty(Property.VARIABLE_KEY).get().value().toString())
+                    .name(RESULT_VARIABLE)
                     .endOfStatement();
         }
         sourceBuilder.token().keyword(SyntaxKind.CLOSE_BRACE_TOKEN);
-        sourceBuilder.textEdit(SourceBuilder.SourceKind.DECLARATION);
+        // Append the activity function at the end of the target file (after imports/existing
+        // declarations) rather than at the action-call site — the flow node's line range points at
+        // the selected action, which for a freshly picked action is line 0 (before the imports).
+        Document targetDoc = FileSystemUtils.getDocument(workspaceManager, sourceBuilder.filePath);
+        Range endOfFile = CommonUtils.toRange(targetDoc.syntaxTree().rootNode().lineRange().endLine());
+        sourceBuilder.textEdit(SourceBuilder.SourceKind.DECLARATION, sourceBuilder.filePath, endOfFile);
         if (AgentsGenerator.needsModuleImport(flowNode, returnType, paramList)) {
             sourceBuilder.acceptImport();
         }
         return gson.toJsonTree(sourceBuilder.build());
+    }
+
+    /**
+     * Normalizes the databinding/return type for the generated activity. The activity signature adds
+     * {@code |error} separately and the body uses {@code check}, so the declared type must be the
+     * success type; and when the action's return type is unspecified or ambiguous ({@code anydata} /
+     * {@code any} / empty) we fall back to {@code json}.
+     */
+    private static String normalizeReturnType(String returnType) {
+        if (returnType == null) {
+            return DEFAULT_RETURN_TYPE;
+        }
+        String type = returnType.strip();
+        if (type.endsWith(ERROR_UNION_SUFFIX)) {
+            type = type.substring(0, type.length() - ERROR_UNION_SUFFIX.length()).strip();
+        }
+        if (type.isEmpty() || type.equals("anydata") || type.equals("any")) {
+            return DEFAULT_RETURN_TYPE;
+        }
+        return type;
     }
 
     /**
