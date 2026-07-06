@@ -46,6 +46,8 @@ import {
     BISearchNodesResponse,
     BISearchRequest,
     BISearchResponse,
+    GenActivityRequest,
+    GenActivityResponse,
     WorkflowDataRequest,
     WorkflowDataResponse,
     BISourceCodeRequest,
@@ -214,6 +216,7 @@ import {
     renameIdentifier,
     runProject,
     search,
+    genActivity,
     getAllData,
     searchNodes,
     updateClassField,
@@ -543,6 +546,10 @@ export class BiDiagramRpcClient implements BIDiagramAPI {
 
     getAllData(params: WorkflowDataRequest): Promise<WorkflowDataResponse> {
         return this._messenger.sendRequest(getAllData, HOST_EXTENSION, params);
+    }
+
+    genActivity(params: GenActivityRequest): Promise<GenActivityResponse> {
+        return this._messenger.sendRequest(genActivity, HOST_EXTENSION, params);
     }
 
     searchNodes(params: BISearchNodesRequest): Promise<BISearchNodesResponse> {

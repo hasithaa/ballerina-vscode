@@ -49,6 +49,8 @@ import {
     BISearchNodesResponse,
     BISearchRequest,
     BISearchResponse,
+    GenActivityRequest,
+    GenActivityResponse,
     WorkflowDataRequest,
     WorkflowDataResponse,
     BISourceCodeRequest,
@@ -2172,6 +2174,18 @@ export class BiDiagramRpcManager implements BIDiagramAPI {
                 reject(error);
             });
         });
+    }
+
+    async genActivity(params: GenActivityRequest): Promise<GenActivityResponse> {
+        if (!params.description) {
+            params.description = "";
+        }
+        const response = await StateMachine.langClient().genActivity(params);
+        if (response.errorMsg) {
+            throw new Error(response.errorMsg);
+        }
+        const artifacts = await updateSourceCode({ textEdits: response.textEdits });
+        return { artifacts, textEdits: response.textEdits };
     }
 
     async getRecordNames(): Promise<RecordsInWorkspaceMentions> {
