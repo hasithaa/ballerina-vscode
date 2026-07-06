@@ -43,6 +43,7 @@ import { RelativeLoader } from "../../../components/RelativeLoader";
 import { LoaderContainer } from "../../../components/RelativeLoader/styles";
 import { ConnectionListItem } from "@wso2/wso2-platform-core";
 import { ConnectorErrorView } from "./components/ErrorContainer";
+import { NewActivityFromConnection } from "./NewActivityFromConnection";
 
 const Container = styled.div`
     display: flex;
@@ -56,6 +57,7 @@ export enum SidePanelView {
     FUNCTION_LIST = "FUNCTION_LIST",
     WORKFLOW_LIST = "WORKFLOW_LIST",
     ACTIVITY_LIST = "ACTIVITY_LIST",
+    ACTIVITY_FROM_CONNECTION = "ACTIVITY_FROM_CONNECTION",
     DATA_MAPPER_LIST = "DATA_MAPPER_LIST",
     NP_FUNCTION_LIST = "NP_FUNCTION_LIST",
     MODEL_PROVIDERS = "MODEL_PROVIDERS",
@@ -124,6 +126,8 @@ interface PanelManagerProps {
     onAddFunction?: () => void;
     onAddWorkflow?: () => void;
     onAddActivity?: () => void;
+    onAddActivityFromConnection?: () => void;
+    onActivityFromConnectionCreated?: (activityName: string) => void;
     onAddNPFunction?: () => void;
     onAddDataMapper?: () => void;
     onAddModelProvider?: () => void;
@@ -205,6 +209,8 @@ export function PanelManager(props: PanelManagerProps) {
         onAddFunction,
         onAddWorkflow,
         onAddActivity,
+        onAddActivityFromConnection,
+        onActivityFromConnectionCreated,
         onAddNPFunction,
         onAddDataMapper,
         onAddAgent,
@@ -427,10 +433,19 @@ export function PanelManager(props: PanelManagerProps) {
                         onSelect={onSelectNode}
                         onSearchTextChange={(searchText) => onSearchActivity?.(searchText, FUNCTION_TYPE.REGULAR)}
                         onAddFunction={onAddActivity}
+                        onAdd={onAddActivityFromConnection}
                         onClose={onClose}
                         title={"Activities"}
                         searchPlaceholder={"Search activities"}
                         onBack={canGoBack ? onBack : undefined}
+                    />
+                );
+
+            case SidePanelView.ACTIVITY_FROM_CONNECTION:
+                return (
+                    <NewActivityFromConnection
+                        fileName={fileName}
+                        onActivityCreated={onActivityFromConnectionCreated}
                     />
                 );
 
