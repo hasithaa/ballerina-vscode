@@ -114,6 +114,7 @@ public class AgentsGenerator {
     public static final String TOOL_ANNOTATION = "AgentTool";
     public static final String MEMORY = "Memory";
     public static final String TARGET_TYPE = "targetType";
+    private static final Gson STATIC_GSON = new Gson();
     private final Gson gson;
     private final SemanticModel semanticModel;
     private static final String INIT = "init";
@@ -689,19 +690,19 @@ public class AgentsGenerator {
         throw new IllegalStateException("Unsupported node kind to generate tool");
     }
 
-    private List<String> populateToolParams(Property toolParams, boolean hasDescription,
-                                            SourceBuilder sourceBuilder) {
+    static List<String> populateToolParams(Property toolParams, boolean hasDescription,
+                                           SourceBuilder sourceBuilder) {
         List<String> paramList = new ArrayList<>();
         if (toolParams == null || toolParams.value() == null) {
             return paramList;
         }
         if (toolParams.value() instanceof Map<?, ?> paramMap) {
             for (Object obj : paramMap.values()) {
-                Property paramProperty = gson.fromJson(gson.toJsonTree(obj), Property.class);
+                Property paramProperty = STATIC_GSON.fromJson(STATIC_GSON.toJsonTree(obj), Property.class);
                 if (!(paramProperty.value() instanceof Map<?, ?> paramData)) {
                     continue;
                 }
-                Map<String, Property> paramProperties = gson.fromJson(gson.toJsonTree(paramData),
+                Map<String, Property> paramProperties = STATIC_GSON.fromJson(STATIC_GSON.toJsonTree(paramData),
                         FormBuilder.NODE_PROPERTIES_TYPE);
 
                 String paramType = paramProperties.get(Property.TYPE_KEY).value().toString();
@@ -738,7 +739,7 @@ public class AgentsGenerator {
         return false;
     }
 
-    private boolean needsModuleImport(FlowNode flowNode, String returnType, List<String> paramList) {
+    static boolean needsModuleImport(FlowNode flowNode, String returnType, List<String> paramList) {
         String modulePrefix = flowNode.codedata().getModulePrefix() + ":";
         if (returnType.contains(modulePrefix)) {
             return true;
@@ -751,7 +752,7 @@ public class AgentsGenerator {
         return false;
     }
 
-    private String resolveTypeInferParams(String returnType, FlowNode flowNode) {
+    static String resolveTypeInferParams(String returnType, FlowNode flowNode) {
         if (flowNode.properties() == null) {
             return returnType;
         }
@@ -778,7 +779,7 @@ public class AgentsGenerator {
         return returnType;
     }
 
-    private boolean hasRecordFieldSelector(FlowNode flowNode) {
+    static boolean hasRecordFieldSelector(FlowNode flowNode) {
         if (flowNode.properties() == null) {
             return false;
         }
@@ -789,7 +790,7 @@ public class AgentsGenerator {
                         && p.types().getFirst().recordSelectorType() != null);
     }
 
-    private String resolveReturnType(FlowNode flowNode, Property returnProperty, SourceBuilder sourceBuilder) {
+    static String resolveReturnType(FlowNode flowNode, Property returnProperty, SourceBuilder sourceBuilder) {
         if (flowNode.codedata().inferredReturnType() != null && hasRecordFieldSelector(flowNode)) {
             Optional<Property> variable = flowNode.getProperty(Property.VARIABLE_KEY);
             if (variable.isPresent()) {
@@ -843,7 +844,7 @@ public class AgentsGenerator {
         return resolveTypeInferParams(returnType, flowNode);
     }
 
-    private boolean genDescription(String description, SourceBuilder sourceBuilder) {
+    static boolean genDescription(String description, SourceBuilder sourceBuilder) {
         boolean hasDescription = !description.isEmpty();
         if (hasDescription) {
             sourceBuilder.token().descriptionDoc(description);
