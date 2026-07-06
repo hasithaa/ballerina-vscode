@@ -196,6 +196,8 @@ import {
     AINodesRequest,
     BISearchRequest,
     BISearchResponse,
+    GenActivityRequest,
+    GenActivityResponse,
     WorkflowDataRequest,
     WorkflowDataResponse,
     AIModelsResponse,
@@ -486,6 +488,7 @@ enum EXTENDED_APIS {
     BI_DISABLE_WORKFLOW_MGMT = 'workflowManagementService/disableWorkflowManagement',
     BI_SHOULD_ENABLE_WORKFLOW_MGMT_DEFAULT = 'workflowManagementService/shouldEnableWorkflowManagementByDefault',
     BI_WORKFLOW_ALL_DATA = 'workflowManager/getAllData',
+    BI_WORKFLOW_GEN_ACTIVITY = 'workflowManager/genActivity',
     BI_SEARCH = 'flowDesignService/search',
     BI_SEARCH_NODES = 'flowDesignService/searchNodes',
     OPEN_API_GENERATE_CLIENT = 'openAPIService/genClient',
@@ -1487,6 +1490,10 @@ export class ExtendedLangClient extends LanguageClient implements ExtendedLangCl
 
     async getAllData(params: WorkflowDataRequest): Promise<WorkflowDataResponse> {
         return this.sendRequest<WorkflowDataResponse>(EXTENDED_APIS.BI_WORKFLOW_ALL_DATA, params);
+    }
+
+    async genActivity(params: GenActivityRequest): Promise<GenActivityResponse> {
+        return this.sendRequest<GenActivityResponse>(EXTENDED_APIS.BI_WORKFLOW_GEN_ACTIVITY, params);
     }
 
     async searchNodes(params: BISearchNodesRequest): Promise<BISearchNodesResponse> {

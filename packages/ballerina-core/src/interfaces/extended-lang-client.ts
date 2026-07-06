@@ -1016,6 +1016,24 @@ export interface WorkflowDataResponse {
     stacktrace?: string;
 }
 
+export interface GenActivityRequest {
+    filePath: string;
+    flowNode: FlowNode;
+    activityName: string;
+    description: string;
+    connection: string;
+    activityParameters?: ToolParameters;
+}
+
+export interface GenActivityResponse {
+    artifacts?: ProjectStructureArtifactResponse[];
+    textEdits: {
+        [key: string]: TextEdit[];
+    };
+    errorMsg?: string;
+    stacktrace?: string;
+}
+
 export type BISearchNodesRequest = {
     filePath: string;
     position?: LinePosition;
@@ -2148,6 +2166,7 @@ export interface BIInterface extends BaseLangClientInterface {
     getSimpleTypeOfExpression: (params: GetSimpleTypeOfExpressionRequest) => Promise<GetSimpleTypeOfExpressionResponse>;
     updateType: (params: UpdateTypeRequest) => Promise<UpdateTypeResponse>;
     getAllData: (params: WorkflowDataRequest) => Promise<WorkflowDataResponse>;
+    genActivity: (params: GenActivityRequest) => Promise<GenActivityResponse>;
     updateImports: (params: UpdateImportsRequest) => Promise<ImportsInfoResponse>;
     addFunction: (params: AddFunctionRequest) => Promise<AddImportItemResponse>;
     convertJsonToRecordType: (params: JsonToRecordParams) => Promise<TypeDataWithReferences>;
