@@ -19,6 +19,8 @@
 package io.ballerina.flowmodelgenerator.core.model.node;
 
 import io.ballerina.compiler.api.SemanticModel;
+import io.ballerina.compiler.api.symbols.ClassSymbol;
+import io.ballerina.compiler.api.symbols.ModuleSymbol;
 import io.ballerina.compiler.api.symbols.ParameterSymbol;
 import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.compiler.api.symbols.SymbolKind;
@@ -30,6 +32,7 @@ import io.ballerina.compiler.syntax.tree.SyntaxKind;
 import io.ballerina.flowmodelgenerator.core.model.Codedata;
 import io.ballerina.flowmodelgenerator.core.model.FlowNode;
 import io.ballerina.flowmodelgenerator.core.model.ItemOption;
+import io.ballerina.flowmodelgenerator.core.model.Metadata;
 import io.ballerina.flowmodelgenerator.core.model.NodeBuilder;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Option;
@@ -39,6 +42,7 @@ import io.ballerina.flowmodelgenerator.core.model.node.builtin.BuiltinActivitySt
 import io.ballerina.flowmodelgenerator.core.model.node.builtin.EmailActivityStrategy;
 import io.ballerina.flowmodelgenerator.core.model.node.builtin.RestActivityStrategy;
 import io.ballerina.flowmodelgenerator.core.model.node.builtin.SoapActivityStrategy;
+import io.ballerina.flowmodelgenerator.core.utils.ConnectorUtil;
 import io.ballerina.flowmodelgenerator.core.utils.FileSystemUtils;
 import io.ballerina.flowmodelgenerator.core.utils.ParamUtils;
 import io.ballerina.flowmodelgenerator.core.utils.WorkflowUtil;
@@ -279,9 +283,11 @@ public class ActivityCallBuilder extends CallBuilder {
             // selector (like builtin activities) so the diagram links the call to the connection.
             if (!userActivityConnectionAssigned) {
                 userActivityConnectionAssigned = true;
-                if (WorkflowUtil.resolveConnectionClass(paramData.typeSymbol()).isPresent()) {
+                Optional<ClassSymbol> connectionClass =
+                        WorkflowUtil.resolveConnectionClass(paramData.typeSymbol());
+                if (connectionClass.isPresent()) {
                     userActivityConnectionBacked = true;
-                    properties().connectionSelector(NEW_CONNECTION_SENTINEL, null, null);
+                    addUserActivityConnectionSelector(connectionClass.get());
                     return true;
                 }
             }
@@ -298,6 +304,34 @@ public class ActivityCallBuilder extends CallBuilder {
         }
 
         return currentBuiltinStrategy.processSpecialParameter(paramData, this);
+    }
+
+    /**
+     * Adds the connection selector for a user-defined connection-backed activity. Mirrors the builtin
+     * activities: the connection field lists connections of the client's category and offers an inline
+     * "Add new connection" wizard entry derived from the connection client type — so a connection can be
+     * created from the wizard just like for the prebuilt activities.
+     */
+    private void addUserActivityConnectionSelector(ClassSymbol connectionClass) {
+        String searchNodesKind = null;
+        List<Metadata.AllowedConnector> connectors = null;
+        Optional<ModuleSymbol> connectionModule = connectionClass.getModule();
+        if (connectionModule.isPresent()) {
+            ModuleInfo connectorModuleInfo = ModuleInfo.from(connectionModule.get().id());
+            searchNodesKind = ConnectorUtil.getConnectionCategory(connectorModuleInfo.moduleName());
+            Codedata connector = new Codedata.Builder<>(null)
+                    .node(NodeKind.NEW_CONNECTION)
+                    .org(connectorModuleInfo.org())
+                    .module(connectorModuleInfo.moduleName())
+                    .packageName(connectorModuleInfo.packageName())
+                    .object(connectionClass.getName().orElse("Client"))
+                    .symbol("init")
+                    .version(connectorModuleInfo.version())
+                    .build();
+            connectors = List.of(new Metadata.AllowedConnector(connector,
+                    "Add new " + connectorModuleInfo.packageName() + " connection"));
+        }
+        properties().connectionSelector(NEW_CONNECTION_SENTINEL, searchNodesKind, connectors);
     }
 
     /**
