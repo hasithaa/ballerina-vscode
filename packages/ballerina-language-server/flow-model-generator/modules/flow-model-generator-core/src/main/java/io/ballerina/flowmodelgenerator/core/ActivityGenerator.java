@@ -264,8 +264,9 @@ public class ActivityGenerator {
             }
             if (codedata.kind().equals(ParameterData.Kind.PATH_PARAM.name())
                     || codedata.kind().equals(ParameterData.Kind.PATH_REST_PARAM.name())) {
-                String key = entry.getKey();
-                pathParams.add(key.startsWith("$") ? "'" + key.substring(1) : key);
+                // Keep the raw property key so it matches the flow node's property map (getProperty)
+                // and the ignoredKeys set; any identifier escaping must happen only at render time.
+                pathParams.add(entry.getKey());
             }
         }
         return pathParams;
