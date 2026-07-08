@@ -134,7 +134,8 @@ public class WorkflowManagerService implements ExtendedLanguageServerService {
                 Optional<SemanticModel> semanticModel = this.workspaceManager.semanticModel(filePath);
                 Optional<Module> module = this.workspaceManager.module(filePath);
                 if (semanticModel.isEmpty() || module.isEmpty()) {
-                    return response;
+                    throw new IllegalStateException(
+                            "Failed to resolve the semantic model or module for the file: " + filePath);
                 }
                 ActivityGenerator activityGenerator = new ActivityGenerator(semanticModel.get(),
                         ModuleInfo.from(module.get().descriptor()));

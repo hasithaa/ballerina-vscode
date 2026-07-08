@@ -178,6 +178,11 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                     .items.filter((item) => !item.metadata.label.startsWith("_"));
             }
             setCategories(convertBICategoriesToSidePanelCategories(connectionsCategory));
+        } catch (error) {
+            console.error(">>> Error fetching connections", { error });
+            await rpcClient.getCommonRpcClient().showErrorMessage({
+                message: "Failed to load connections.",
+            });
         } finally {
             setLoading(false);
         }
@@ -365,7 +370,7 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
 
         setSaving(true);
         try {
-            await rpcClient.getBIDiagramRpcClient().genActivity({
+            const response = await rpcClient.getBIDiagramRpcClient().genActivity({
                 filePath: fileName,
                 flowNode: clonedFlowNode,
                 activityName: cleanName,
@@ -373,9 +378,19 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 connection: selectedNodeRef.current?.codedata?.parentSymbol || "",
                 activityParameters,
             });
+            if (response?.errorMsg) {
+                console.error(">>> Error creating activity from connection", response);
+                await rpcClient.getCommonRpcClient().showErrorMessage({
+                    message: `Failed to create the activity '${cleanName}'. ${response.errorMsg}`,
+                });
+                return;
+            }
             onActivityCreated(cleanName);
         } catch (error) {
             console.error(">>> Error creating activity from connection", { error });
+            await rpcClient.getCommonRpcClient().showErrorMessage({
+                message: `Failed to create the activity '${cleanName}'.`,
+            });
         } finally {
             setSaving(false);
         }

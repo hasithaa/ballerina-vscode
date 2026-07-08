@@ -20,9 +20,11 @@ package io.ballerina.flowmodelgenerator.extension.workflowmanager;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.gson.reflect.TypeToken;
 import io.ballerina.flowmodelgenerator.extension.request.GenActivityRequest;
 import io.ballerina.modelgenerator.commons.AbstractLSTest;
+import org.ballerinalang.langserver.util.TestUtil;
 import org.eclipse.lsp4j.TextEdit;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -36,6 +38,7 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Tests for the WorkflowManagerService genActivity API.
@@ -96,6 +99,45 @@ public class GenActivityTest extends AbstractLSTest {
 //            updateConfig(configJsonPath, updatedConfig);
             Assert.fail(String.format("Failed test: '%s' (%s)", testConfig.description(), configJsonPath));
         }
+    }
+
+    @Test
+    public void testUnsupportedNodeKind() throws IOException {
+        JsonObject response = sendMutatedRequest(diagram ->
+                diagram.getAsJsonObject("codedata").addProperty("node", "IF"), null);
+        assertGracefulError(response, "unsupported node kind");
+    }
+
+    @Test
+    public void testUnresolvableConnection() throws IOException {
+        JsonObject response = sendMutatedRequest(diagram -> { }, "nonExistentConnection");
+        assertGracefulError(response, "unresolvable connection");
+    }
+
+    private JsonObject sendMutatedRequest(java.util.function.Consumer<JsonObject> diagramMutator,
+                                          String connectionOverride) throws IOException {
+        Path configJsonPath = configDir.resolve("gen_activity_remote_action.json");
+        TestConfig base = gson.fromJson(Files.newBufferedReader(configJsonPath), TestConfig.class);
+        JsonObject diagram = base.diagram().getAsJsonObject();
+        diagramMutator.accept(diagram);
+
+        String filePath = sourceDir.resolve(base.source()).toAbsolutePath().toString();
+        GenActivityRequest request = new GenActivityRequest(filePath, diagram, base.activityName(),
+                base.activityParameters(), base.activityDescription(),
+                connectionOverride != null ? connectionOverride : base.connection());
+
+        // The shared getResponse helper fails the test when the response carries an errorMsg, so the
+        // endpoint is invoked directly here to assert the graceful-error contract on the raw response.
+        CompletableFuture<?> result = serviceEndpoint.request(getServiceName() + "/" + getApiName(), request);
+        String response = TestUtil.getResponseString(result);
+        return JsonParser.parseString(response).getAsJsonObject().getAsJsonObject("result");
+    }
+
+    private void assertGracefulError(JsonObject response, String scenario) {
+        Assert.assertTrue(response.get("textEdits") == null || response.get("textEdits").isJsonNull(),
+                "Expected no text edits for " + scenario);
+        Assert.assertTrue(response.has("errorMsg") && !response.get("errorMsg").isJsonNull(),
+                "Expected a graceful error message for " + scenario);
     }
 
     @Override
