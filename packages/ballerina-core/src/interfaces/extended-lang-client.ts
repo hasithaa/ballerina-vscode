@@ -1027,7 +1027,7 @@ export interface GenActivityRequest {
 
 export interface GenActivityResponse {
     artifacts?: ProjectStructureArtifactResponse[];
-    textEdits: {
+    textEdits?: {
         [key: string]: TextEdit[];
     };
     errorMsg?: string;

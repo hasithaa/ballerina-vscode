@@ -2184,6 +2184,9 @@ export class BiDiagramRpcManager implements BIDiagramAPI {
         if (response.errorMsg) {
             throw new Error(response.errorMsg);
         }
+        if (!response.textEdits) {
+            throw new Error("No text edits were returned for the generated activity.");
+        }
         const artifacts = await updateSourceCode({ textEdits: response.textEdits });
         return { artifacts, textEdits: response.textEdits };
     }
