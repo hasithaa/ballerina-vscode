@@ -1057,8 +1057,12 @@ public class CodeAnalyzer extends NodeVisitor {
                         WorkflowUtil.resolveConnectionClass(paramSymbol.typeDescriptor());
                 if (connectionClass.isPresent() && valueNode instanceof ExpressionNode connectionExpr) {
                     nodeBuilder.codedata().node(NodeKind.CONNECTION_ACTIVITY_CALL);
-                    nodeBuilder.properties().callConnection(connectionExpr, Property.CONNECTION_KEY,
-                            getConnectorMetadata(connectionClass.get()));
+                    // Render the connection as an editable connection dropdown (like builtin activities),
+                    // seeded with the current connection value, instead of a hidden expression field.
+                    ActivityCallBuilder.ConnectionSelectorData selector =
+                            ActivityCallBuilder.resolveUserActivityConnectionSelector(connectionClass.get());
+                    nodeBuilder.properties().connectionSelector(connectionExpr.toSourceCode().strip(),
+                            selector.searchNodesKind(), selector.connectors());
                     connectionClass.get().getModule().ifPresent(module -> {
                         ModuleID id = module.id();
                         nodeBuilder.metadata().icon(

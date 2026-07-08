@@ -313,25 +313,44 @@ public class ActivityCallBuilder extends CallBuilder {
      * created from the wizard just like for the prebuilt activities.
      */
     private void addUserActivityConnectionSelector(ClassSymbol connectionClass) {
-        String searchNodesKind = null;
-        List<Metadata.AllowedConnector> connectors = null;
+        ConnectionSelectorData selector = resolveUserActivityConnectionSelector(connectionClass);
+        properties().connectionSelector(NEW_CONNECTION_SENTINEL, selector.searchNodesKind(), selector.connectors());
+    }
+
+    /**
+     * The connection dropdown metadata for a user-defined connection-backed activity: the category of
+     * connections to list and the inline "Add new connection" wizard entry derived from the client type.
+     *
+     * @param searchNodesKind the connection category the dropdown lists
+     * @param connectors      the allowed "add new connection" wizard entries (may be empty)
+     */
+    public record ConnectionSelectorData(String searchNodesKind, List<Metadata.AllowedConnector> connectors) {
+    }
+
+    /**
+     * Derives the connection selector metadata (category + add-new wizard entry) for a connection client
+     * class. Shared by the template path ({@link #addUserActivityConnectionSelector}) and the source
+     * analysis path (CodeAnalyzer) so both render an identical connection dropdown.
+     */
+    public static ConnectionSelectorData resolveUserActivityConnectionSelector(ClassSymbol connectionClass) {
         Optional<ModuleSymbol> connectionModule = connectionClass.getModule();
-        if (connectionModule.isPresent()) {
-            ModuleInfo connectorModuleInfo = ModuleInfo.from(connectionModule.get().id());
-            searchNodesKind = ConnectorUtil.getConnectionCategory(connectorModuleInfo.moduleName());
-            Codedata connector = new Codedata.Builder<>(null)
-                    .node(NodeKind.NEW_CONNECTION)
-                    .org(connectorModuleInfo.org())
-                    .module(connectorModuleInfo.moduleName())
-                    .packageName(connectorModuleInfo.packageName())
-                    .object(connectionClass.getName().orElse("Client"))
-                    .symbol("init")
-                    .version(connectorModuleInfo.version())
-                    .build();
-            connectors = List.of(new Metadata.AllowedConnector(connector,
-                    "Add new " + connectorModuleInfo.packageName() + " connection"));
+        if (connectionModule.isEmpty()) {
+            return new ConnectionSelectorData(null, null);
         }
-        properties().connectionSelector(NEW_CONNECTION_SENTINEL, searchNodesKind, connectors);
+        ModuleInfo connectorModuleInfo = ModuleInfo.from(connectionModule.get().id());
+        String searchNodesKind = ConnectorUtil.getConnectionCategory(connectorModuleInfo.moduleName());
+        Codedata connector = new Codedata.Builder<>(null)
+                .node(NodeKind.NEW_CONNECTION)
+                .org(connectorModuleInfo.org())
+                .module(connectorModuleInfo.moduleName())
+                .packageName(connectorModuleInfo.packageName())
+                .object(connectionClass.getName().orElse("Client"))
+                .symbol("init")
+                .version(connectorModuleInfo.version())
+                .build();
+        List<Metadata.AllowedConnector> connectors = List.of(new Metadata.AllowedConnector(connector,
+                "Add new " + connectorModuleInfo.packageName() + " connection"));
+        return new ConnectionSelectorData(searchNodesKind, connectors);
     }
 
     /**
