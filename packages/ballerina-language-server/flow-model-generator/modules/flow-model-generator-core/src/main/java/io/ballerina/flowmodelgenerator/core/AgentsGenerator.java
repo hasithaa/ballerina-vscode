@@ -114,8 +114,7 @@ public class AgentsGenerator {
     public static final String TOOL_ANNOTATION = "AgentTool";
     public static final String MEMORY = "Memory";
     public static final String TARGET_TYPE = "targetType";
-    private static final Gson STATIC_GSON = new Gson();
-    private final Gson gson;
+    private static final Gson GSON = new Gson();
     private final SemanticModel semanticModel;
     private static final String INIT = "init";
     private static final String AGENT_FILE = "agents.bal";
@@ -127,12 +126,10 @@ public class AgentsGenerator {
     private static final String OPENAI_MODEL_PROVIDER = "OpenAiModelProvider";
 
     public AgentsGenerator() {
-        this.gson = new Gson();
         this.semanticModel = null;
     }
 
     public AgentsGenerator(SemanticModel semanticModel) {
-        this.gson = new Gson();
         this.semanticModel = semanticModel;
     }
 
@@ -167,7 +164,7 @@ public class AgentsGenerator {
                         .build());
             }
         }
-        return gson.toJsonTree(agents).getAsJsonArray();
+        return GSON.toJsonTree(agents).getAsJsonArray();
     }
 
     public JsonArray getNewBallerinaxModels() {
@@ -237,7 +234,7 @@ public class AgentsGenerator {
                     .symbol(INIT)
                     .build());
         }
-        return gson.toJsonTree(models).getAsJsonArray();
+        return GSON.toJsonTree(models).getAsJsonArray();
     }
 
     public JsonArray getAllMemoryManagers(SemanticModel agentSymbol) {
@@ -271,7 +268,7 @@ public class AgentsGenerator {
                     .symbol(INIT)
                     .build());
         }
-        return gson.toJsonTree(models).getAsJsonArray();
+        return GSON.toJsonTree(models).getAsJsonArray();
     }
 
     public JsonArray getModels() {
@@ -294,7 +291,7 @@ public class AgentsGenerator {
                 }
             }
         }
-        return gson.toJsonTree(models).getAsJsonArray();
+        return GSON.toJsonTree(models).getAsJsonArray();
     }
 
     public JsonArray getTools(SemanticModel semanticModel) {
@@ -336,13 +333,13 @@ public class AgentsGenerator {
             }
         }
 
-        return gson.toJsonTree(functionNames).getAsJsonArray();
+        return GSON.toJsonTree(functionNames).getAsJsonArray();
     }
 
     public JsonElement genTool(JsonElement node, String toolName, JsonElement toolParameters, String connectionName,
                                String description, Path filePath, WorkspaceManager workspaceManager) {
-        FlowNode flowNode = gson.fromJson(node, FlowNode.class);
-        Property toolParams = gson.fromJson(toolParameters, Property.class);
+        FlowNode flowNode = GSON.fromJson(node, FlowNode.class);
+        Property toolParams = GSON.fromJson(toolParameters, Property.class);
         NodeKind nodeKind = flowNode.codedata().node();
         SourceBuilder sourceBuilder = new SourceBuilder(flowNode, workspaceManager, filePath);
         String path = flowNode.metadata().icon();
@@ -416,12 +413,12 @@ public class AgentsGenerator {
             Optional<Property> funcCallArgs = flowNode.getProperty(Property.PARAMETERS_KEY);
             if (funcCallArgs.isPresent() && funcCallArgs.get().value() instanceof Map<?, ?> paramMap) {
                 for (Map.Entry<?, ?> paramEntry : paramMap.entrySet()) {
-                    Property paramProperty = gson.fromJson(gson.toJsonTree(paramEntry.getValue()),
+                    Property paramProperty = GSON.fromJson(GSON.toJsonTree(paramEntry.getValue()),
                             Property.class);
                     if (!(paramProperty.value() instanceof Map<?, ?> paramData)) {
                         continue;
                     }
-                    Map<String, Property> paramProperties = gson.fromJson(gson.toJsonTree(paramData),
+                    Map<String, Property> paramProperties = GSON.fromJson(GSON.toJsonTree(paramData),
                             FormBuilder.NODE_PROPERTIES_TYPE);
                     toolInputVarNames.put(paramEntry.getKey().toString(),
                             paramProperties.get(Property.VARIABLE_KEY).value().toString());
@@ -497,7 +494,7 @@ public class AgentsGenerator {
             if (p != null) {
                 textEdits.put(p, te);
             }
-            return gson.toJsonTree(textEdits);
+            return GSON.toJsonTree(textEdits);
         } else if (nodeKind == NodeKind.REMOTE_ACTION_CALL) {
             boolean hasDescription = genDescription(description, sourceBuilder);
             Set<String> ignoredKeys = new HashSet<>(List.of(Property.VARIABLE_KEY, Property.TYPE_KEY, TARGET_TYPE,
@@ -568,7 +565,7 @@ public class AgentsGenerator {
             if (needsModuleImport(flowNode, returnType, paramList)) {
                 sourceBuilder.acceptImport();
             }
-            return gson.toJsonTree(sourceBuilder.build());
+            return GSON.toJsonTree(sourceBuilder.build());
         } else if (nodeKind == NodeKind.RESOURCE_ACTION_CALL) {
             boolean hasDescription = genDescription(description, sourceBuilder);
             Map<String, Property> properties = flowNode.properties();
@@ -685,7 +682,7 @@ public class AgentsGenerator {
             if (needsModuleImport(flowNode, returnType, paramList)) {
                 sourceBuilder.acceptImport();
             }
-            return gson.toJsonTree(sourceBuilder.build());
+            return GSON.toJsonTree(sourceBuilder.build());
         }
         throw new IllegalStateException("Unsupported node kind to generate tool");
     }
@@ -698,11 +695,11 @@ public class AgentsGenerator {
         }
         if (toolParams.value() instanceof Map<?, ?> paramMap) {
             for (Object obj : paramMap.values()) {
-                Property paramProperty = STATIC_GSON.fromJson(STATIC_GSON.toJsonTree(obj), Property.class);
+                Property paramProperty = GSON.fromJson(GSON.toJsonTree(obj), Property.class);
                 if (!(paramProperty.value() instanceof Map<?, ?> paramData)) {
                     continue;
                 }
-                Map<String, Property> paramProperties = STATIC_GSON.fromJson(STATIC_GSON.toJsonTree(paramData),
+                Map<String, Property> paramProperties = GSON.fromJson(GSON.toJsonTree(paramData),
                         FormBuilder.NODE_PROPERTIES_TYPE);
 
                 String paramType = paramProperties.get(Property.TYPE_KEY).value().toString();
@@ -872,7 +869,7 @@ public class AgentsGenerator {
         }
 
         String authStr = data.get("auth").toString();
-        JsonObject authConfig = gson.fromJson(authStr, JsonObject.class);
+        JsonObject authConfig = GSON.fromJson(authStr, JsonObject.class);
 
         StringBuilder sb = new StringBuilder();
         sb.append("@ai:AgentTool {").append(System.lineSeparator());
@@ -923,7 +920,7 @@ public class AgentsGenerator {
     }
 
     public JsonArray getActions(JsonElement node, Path filePath, Project project, WorkspaceManager workspaceManager) {
-        FlowNode flowNode = gson.fromJson(node, FlowNode.class);
+        FlowNode flowNode = GSON.fromJson(node, FlowNode.class);
         Document document = workspaceManager.document(filePath).orElseThrow();
         TextDocument textDocument = document.textDocument();
         SourceBuilder sourceBuilder = new SourceBuilder(flowNode, workspaceManager, filePath);
@@ -968,7 +965,7 @@ public class AgentsGenerator {
         }
         List<Item> methods = new ArrayList<>();
         if (variableSymbol == null) {
-            return gson.toJsonTree(methods).getAsJsonArray();
+            return GSON.toJsonTree(methods).getAsJsonArray();
         }
 
         // TODO: Derive this logic from AvailableNodeGenerator
@@ -976,7 +973,7 @@ public class AgentsGenerator {
                 (TypeReferenceTypeSymbol) variableSymbol.typeDescriptor();
         ClassSymbol classSymbol = (ClassSymbol) typeDescriptorSymbol.typeDescriptor();
         if (!(classSymbol.qualifiers().contains(Qualifier.CLIENT))) {
-            return gson.toJsonTree(methods).getAsJsonArray();
+            return GSON.toJsonTree(methods).getAsJsonArray();
         }
         String parentSymbolName = variableSymbol.getName().orElseThrow();
         String className = classSymbol.getName().orElseThrow();
@@ -1036,7 +1033,7 @@ public class AgentsGenerator {
                     .buildAvailableNode();
             methods.add(item);
         }
-        return gson.toJsonTree(methods).getAsJsonArray();
+        return GSON.toJsonTree(methods).getAsJsonArray();
     }
 
     public FunctionDefinitionNode getToolFunction(String toolName, Document document) {
@@ -1081,7 +1078,7 @@ public class AgentsGenerator {
                 nodeKind == NodeKind.RESOURCE_ACTION_CALL)) {
             return null;
         }
-        return gson.toJsonTree(flowNode);
+        return GSON.toJsonTree(flowNode);
     }
 
     private Path addIsolateKeyword(String name, Path filePath, List<TextEdit> textEdits,
