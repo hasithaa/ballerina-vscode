@@ -577,7 +577,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 const response = await rpcClient.getBIDiagramRpcClient().search({
                     position: { startLine: targetRef.current.startLine, endLine: targetRef.current.endLine },
                     filePath: model?.fileName,
-                    queryMap: undefined,
+                    queryMap: durableAgentActivityListRef.current
+                        ? { excludeBuiltins: "true", nodeKind: "DURABLE_AGENT_ADD_ACTIVITY" }
+                        : undefined,
                     searchKind: "ACTIVITY_CALL",
                 });
                 const panelCategories = convertFunctionCategoriesToSidePanelCategories(
@@ -2416,6 +2418,36 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         activityName: string,
         callArgs: Record<string, string> = {}
     ) => {
+        // Durable agent: the created activity is registered on the agent directly —
+        // generate `registerActivity(<name>)` before the run statement, no selection form.
+        if (durableAgentActivityListRef.current) {
+            setShowProgressIndicator(true);
+            try {
+                const template = await rpcClient.getBIDiagramRpcClient().getNodeTemplate({
+                    position: targetRef.current.startLine,
+                    filePath: model?.fileName,
+                    id: { node: "DURABLE_AGENT_ADD_ACTIVITY", symbol: activityName } as any,
+                });
+                const node = template.flowNode;
+                node.codedata.isNew = true;
+                node.codedata.lineRange = {
+                    fileName: model?.fileName,
+                    startLine: targetRef.current.startLine,
+                    endLine: targetRef.current.startLine,
+                } as any;
+                await rpcClient.getBIDiagramRpcClient().getSourceCode({
+                    filePath: model.fileName,
+                    flowNode: node,
+                });
+                closeSidePanelAndFetchUpdatedFlowModel();
+            } catch (error) {
+                console.error(">>> Error registering the created activity on the agent", error);
+                await handleActivityAdded();
+            } finally {
+                setShowProgressIndicator(false);
+            }
+            return;
+        }
         // After the activity function is generated, insert its call into the workflow at the current
         // position — pre-filled with the expressions entered in the create form, so there is no second
         // form to fill.

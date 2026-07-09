@@ -43,9 +43,9 @@ import io.ballerina.projects.Document;
 import io.ballerina.tools.text.LineRange;
 import io.ballerina.tools.text.TextRange;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.nio.file.Path;
 import java.util.Optional;
 
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.ACTIVITY;

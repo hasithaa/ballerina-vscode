@@ -39,7 +39,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.AGENT_CONTEXT_CLASS_NAME;
-import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITIES_METHOD_NAME;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITY_METHOD_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITY_DESCRIPTION;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITY_LABEL;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_MODULE;
@@ -47,15 +47,13 @@ import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_O
 
 /**
  * Registers a workflow activity as a durable agent tool. Generates
- * {@code check ctx.registerActivities([<activity>]);}.
+ * {@code check durableAgentContext.registerActivity(<activity>);}.
  *
  * @since 1.8.0
  */
 public class DurableAgentAddActivityBuilder extends CallBuilder {
 
     public static final String ACTIVITY_KEY = "activity";
-    // The registerActivities signature parameter name; present on nodes re-read from source.
-    public static final String TOOLS_PARAM_KEY = "tools";
     public static final String ACTIVITY_LABEL = "Activity";
     public static final String ACTIVITY_DOC = "The @workflow:Activity function to expose as an agent tool";
 
@@ -77,7 +75,7 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                 .org(WORKFLOW_ORG)
                 .module(WORKFLOW_MODULE)
                 .object(AGENT_CONTEXT_CLASS_NAME)
-                .symbol(REGISTER_ACTIVITIES_METHOD_NAME);
+                .symbol(REGISTER_ACTIVITY_METHOD_NAME);
     }
 
     @Override
@@ -89,7 +87,7 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
         String preSelected = "";
         String contextSymbol = context.codedata() == null ? null : context.codedata().symbol();
         if (contextSymbol != null && !contextSymbol.isEmpty()
-                && !REGISTER_ACTIVITIES_METHOD_NAME.equals(contextSymbol)) {
+                && !REGISTER_ACTIVITY_METHOD_NAME.equals(contextSymbol)) {
             preSelected = contextSymbol;
         }
 
@@ -118,24 +116,17 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
         String ctxParamName = WorkflowUtil.resolveAgentContextParamName(sourceBuilder);
         Optional<Property> activityProperty = sourceBuilder.getProperty(ACTIVITY_KEY);
         String activity = activityProperty.map(p -> p.value() == null ? "" : p.value().toString()).orElse("");
-        String activityList;
-        if (!activity.isBlank()) {
-            activityList = "[" + activity + "]";
-        } else {
-            // Source re-read path: the raw signature parameter (`tools`) carries the full list.
-            activityList = sourceBuilder.getProperty(TOOLS_PARAM_KEY)
-                    .map(p -> p.value() == null ? "" : p.value().toString())
-                    .filter(value -> !value.isBlank())
-                    .orElseThrow(() -> new IllegalStateException("An activity function must be selected"));
+        if (activity.isBlank()) {
+            throw new IllegalStateException("An activity function must be selected");
         }
 
         sourceBuilder.token()
                 .keyword(SyntaxKind.CHECK_KEYWORD)
                 .name(ctxParamName)
                 .keyword(SyntaxKind.DOT_TOKEN)
-                .name(REGISTER_ACTIVITIES_METHOD_NAME)
+                .name(REGISTER_ACTIVITY_METHOD_NAME)
                 .keyword(SyntaxKind.OPEN_PAREN_TOKEN)
-                .name(activityList)
+                .name(activity)
                 .keyword(SyntaxKind.CLOSE_PAREN_TOKEN)
                 .endOfStatement();
 

@@ -228,7 +228,7 @@ import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.CALL_ACTIV
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.CALL_HUMAN_TASK_METHOD_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.CONTEXT_CLASS_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.HUMAN_TASK_DESCRIPTION;
-import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITIES_METHOD_NAME;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITY_METHOD_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITY_DESCRIPTION;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITY_LABEL;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_HUMAN_TASK_DESCRIPTION;
@@ -1081,12 +1081,11 @@ public class CodeAnalyzer extends NodeVisitor {
             public void visit(MethodCallExpressionNode methodCall) {
                 String methodName = getIdentifierName(methodCall.methodName());
                 SeparatedNodeList<FunctionArgumentNode> args = methodCall.arguments();
-                if (REGISTER_ACTIVITIES_METHOD_NAME.equals(methodName)
+                if (REGISTER_ACTIVITY_METHOD_NAME.equals(methodName)
                         && !args.isEmpty() && args.get(0) instanceof PositionalArgumentNode posArg
-                        && posArg.expression() instanceof ListConstructorExpressionNode activityList) {
-                    for (Node element : activityList.expressions()) {
-                        activities.add(new ToolData(element.toSourceCode().trim(), null, "", "activity"));
-                    }
+                        && (posArg.expression().kind() == SyntaxKind.SIMPLE_NAME_REFERENCE
+                        || posArg.expression().kind() == SyntaxKind.QUALIFIED_NAME_REFERENCE)) {
+                    activities.add(new ToolData(posArg.expression().toSourceCode().trim(), null, "", "activity"));
                 } else if (REGISTER_HUMAN_TASK_METHOD_NAME.equals(methodName)
                         && !args.isEmpty() && args.get(0) instanceof PositionalArgumentNode taskArg
                         && taskArg.expression().kind() == SyntaxKind.STRING_LITERAL) {
@@ -3396,7 +3395,7 @@ public class CodeAnalyzer extends NodeVisitor {
             return false;
         }
         String methodName = getIdentifierName(methodCall.methodName());
-        if (!REGISTER_ACTIVITIES_METHOD_NAME.equals(methodName)
+        if (!REGISTER_ACTIVITY_METHOD_NAME.equals(methodName)
                 && !REGISTER_HUMAN_TASK_METHOD_NAME.equals(methodName)) {
             return false;
         }
@@ -3453,7 +3452,7 @@ public class CodeAnalyzer extends NodeVisitor {
                 && isWorkflowModule(classSymbol.getModule())) {
             NodeKind agentNodeKind = switch (functionName) {
                 case RUN_DURABLE_AGENT_METHOD_NAME -> NodeKind.DURABLE_AGENT_RUN;
-                case REGISTER_ACTIVITIES_METHOD_NAME -> NodeKind.DURABLE_AGENT_ADD_ACTIVITY;
+                case REGISTER_ACTIVITY_METHOD_NAME -> NodeKind.DURABLE_AGENT_ADD_ACTIVITY;
                 case REGISTER_HUMAN_TASK_METHOD_NAME -> NodeKind.DURABLE_AGENT_HUMAN_TASK;
                 default -> null;
             };

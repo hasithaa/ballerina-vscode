@@ -20,6 +20,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { FlowNode, LineRange, NodeKind, NodeProperties, getPrimaryInputType } from "@wso2/ballerina-core";
 import { FormField, FormImports, FormValues } from "@wso2/ballerina-side-panel";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
+import { GET_DEFAULT_MODEL_PROVIDER } from "../../constants";
 import { ArtifactForm } from "../../views/BI/Forms/ArtifactForm";
 import { RelativeLoader } from "../RelativeLoader";
 import { InfoBox } from "../InfoBox";
@@ -130,12 +131,16 @@ export function ConnectionConfig(props: ConnectionConfigProps): JSX.Element {
             // 1. Update the parent node's connection reference
             updateNodeWithConnectionVariable(connectionKind, selectedNode, data["connection"]);
 
-            // 2. Save the connection node config if there are config fields with changes
+            // 2. Save the connection node config if there are config fields with changes.
+            // The WSO2 default model provider is configured through Config.toml (see the
+            // panel note) — never regenerate its declaration from here.
             const connectionNode = connectionNodesMap.current.get(data["connection"]);
+            const isDefaultWso2Provider = connectionNode?.codedata?.symbol === GET_DEFAULT_MODEL_PROVIDER;
             const hasConfigChanges = connectionConfigFields.current.some(
                 field => data[field.key] !== undefined && data[field.key] !== field.value
             );
-            if (connectionNode && connectionConfigFields.current.length > 0 && hasConfigChanges) {
+            if (connectionNode && !isDefaultWso2Provider && connectionConfigFields.current.length > 0
+                && hasConfigChanges) {
                 const nodeToSave = cloneDeep(connectionNode);
                 updateFormFieldsWithData(connectionConfigFields.current, data, formImports);
                 updateNodeTemplateProperties(nodeToSave, connectionConfigFields.current);
