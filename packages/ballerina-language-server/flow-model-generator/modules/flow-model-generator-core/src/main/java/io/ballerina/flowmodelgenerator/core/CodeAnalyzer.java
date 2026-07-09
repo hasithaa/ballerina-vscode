@@ -1042,8 +1042,15 @@ public class CodeAnalyzer extends NodeVisitor {
         promptValues.forEach((key, propertyValue) -> agentData.put(key, propertyValue.value()));
         nodeBuilder.metadata().addData("agent", agentData);
         if (modelArg != null) {
-            nodeBuilder.metadata().addData("model",
-                    new ToolData(modelArg.toString().trim(), null, "", null));
+            // Resolve the provider variable's type to its connector icon, same as AGENT_CALL,
+            // so the model circle renders the provider icon instead of a placeholder.
+            ModelData modelData = getModelIconUrl(modelArg);
+            if (modelData != null) {
+                nodeBuilder.metadata().addData("model", modelData);
+            } else {
+                nodeBuilder.metadata().addData("model",
+                        new ModelData(modelArg.toString().trim(), null, ""));
+            }
         }
 
         // The agent's AI tools (from this call's own `tools = [...]` argument).

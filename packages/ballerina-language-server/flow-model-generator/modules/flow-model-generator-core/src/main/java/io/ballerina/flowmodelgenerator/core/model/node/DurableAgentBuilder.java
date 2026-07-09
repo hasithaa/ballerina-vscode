@@ -20,10 +20,12 @@ package io.ballerina.flowmodelgenerator.core.model.node;
 
 import io.ballerina.compiler.syntax.tree.SyntaxKind;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
+import io.ballerina.flowmodelgenerator.core.model.Option;
 import io.ballerina.flowmodelgenerator.core.model.Property;
 import io.ballerina.flowmodelgenerator.core.model.SourceBuilder;
 import io.ballerina.modelgenerator.commons.ModuleInfo;
 import io.ballerina.modelgenerator.commons.PackageUtil;
+import io.ballerina.projects.Package;
 import org.eclipse.lsp4j.TextEdit;
 
 import java.nio.file.Path;
@@ -112,12 +114,14 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
 
         boolean isNew = Boolean.TRUE.equals(sourceBuilder.flowNode.codedata().isNew());
         if (isNew || sourceBuilder.flowNode.codedata().lineRange() == null) {
-            // Pre-populate the body with the agent run call so a freshly created durable
-            // agent is immediately runnable: the wizard ensures the shared wso2ModelProvider
-            // right after creating the function.
+            // Pre-populate the body with the agent run call so a freshly created durable agent is
+            // immediately runnable. Reference an existing model provider variable if the project
+            // has one; otherwise fall back to `wso2ModelProvider`, which the creation wizard
+            // creates only when no provider exists yet.
+            String modelVar = resolveExistingModelProvider(sourceBuilder);
             String runStatement = "check " + DEFAULT_AGENT_CTX_PARAM_NAME + ".runDurableAgent("
                     + "systemPrompt = {role: string `" + funcName + "`, instructions: string ``}, "
-                    + "model = wso2ModelProvider);";
+                    + "model = " + modelVar + ");";
             sourceBuilder
                     .token()
                         .openBrace()
@@ -133,5 +137,29 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
         }
 
         return sourceBuilder.build();
+    }
+
+    // The default provider variable created by the wizard when the project has none yet.
+    private static final String DEFAULT_MODEL_PROVIDER_VAR = "wso2ModelProvider";
+
+    // Picks an existing module-level ai:ModelProvider variable to reference in the pre-populated
+    // run call, so creating an agent in a project that already has a provider does not force a
+    // new WSO2 provider. Falls back to the default name when the project has no provider.
+    private static String resolveExistingModelProvider(SourceBuilder sourceBuilder) {
+        try {
+            Package currentPackage = PackageUtil
+                    .loadProject(sourceBuilder.workspaceManager, sourceBuilder.filePath).currentPackage();
+            PackageUtil.getCompilation(currentPackage);
+            for (io.ballerina.projects.Module module : currentPackage.modules()) {
+                List<Option> options = DurableAgentRunBuilder.modelProviderOptions(
+                        module.getCompilation().getSemanticModel());
+                if (!options.isEmpty()) {
+                    return options.get(0).value();
+                }
+            }
+        } catch (RuntimeException e) {
+            // Project resolution can fail before the module is pulled; use the default name.
+        }
+        return DEFAULT_MODEL_PROVIDER_VAR;
     }
 }

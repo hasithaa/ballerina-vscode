@@ -584,27 +584,29 @@ export function FunctionForm(props: FunctionFormProps) {
         console.log("Existing Function Node: ", flowNode);
     }
 
-    // Ensure the shared WSO2 default model provider exists in the project and its
-    // Config.toml entry is written. Reuses an existing `wso2ModelProvider` variable if
-    // present (same behavior as AIChatAgentWizard). Failures are non-fatal: the agent
-    // function is already created and the provider can be added manually.
+    // Ensure the project has a model provider for the new durable agent. If ANY provider
+    // already exists, reuse it and create nothing (the generated run call references the
+    // existing provider). Only when the project has no provider at all do we create the
+    // shared WSO2 default provider and write its Config.toml entry. Failures are non-fatal:
+    // the agent function is already created and a provider can be configured from the model
+    // circle. */
     const ensureWso2ModelProvider = async () => {
         try {
             const existingModelProviders = await rpcClient.getBIDiagramRpcClient().searchNodes({
                 filePath: projectPath,
                 queryMap: { kind: "MODEL_PROVIDER" as NodeKind }
             });
-            const existingProvider = existingModelProviders?.output?.find(
-                node => String(node.properties?.variable?.value) === WSO2_MODEL_PROVIDER_VAR
-            );
-            if (!existingProvider) {
-                const modelNodeTemplate = await getNodeTemplate(rpcClient, WSO2_MODEL_PROVIDER_CODEDATA, projectPath);
-                modelNodeTemplate.properties.variable.value = WSO2_MODEL_PROVIDER_VAR;
-                await rpcClient.getBIDiagramRpcClient().getSourceCode({ filePath: projectPath, flowNode: modelNodeTemplate });
+            const hasAnyProvider = (existingModelProviders?.output?.length ?? 0) > 0;
+            if (hasAnyProvider) {
+                // A provider already exists — the agent's run call references it; nothing to create.
+                return;
             }
+            const modelNodeTemplate = await getNodeTemplate(rpcClient, WSO2_MODEL_PROVIDER_CODEDATA, projectPath);
+            modelNodeTemplate.properties.variable.value = WSO2_MODEL_PROVIDER_VAR;
+            await rpcClient.getBIDiagramRpcClient().getSourceCode({ filePath: projectPath, flowNode: modelNodeTemplate });
             await rpcClient.getAIAgentRpcClient().configureDefaultModelProvider("model");
         } catch (error) {
-            console.error("Failed to ensure WSO2 default model provider:", error);
+            console.error("Failed to ensure a default model provider:", error);
         }
     };
 
