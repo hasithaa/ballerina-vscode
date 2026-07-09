@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
 import { NodeList, Category as PanelCategory, FormField, FormImports, FormValues } from "@wso2/ballerina-side-panel";
@@ -24,7 +24,6 @@ import {
     AvailableNode,
     Category,
     CodeData,
-    Diagnostic,
     DIRECTORY_MAP,
     EVENT_TYPE,
     FlowNode,
@@ -33,29 +32,21 @@ import {
     ParentPopupData,
     Property,
     RecordTypeField,
-    ToolParameterItem,
     ToolParameters,
     ToolParametersValue,
     getPrimaryInputType,
 } from "@wso2/ballerina-core";
 import { cloneDeep } from "lodash";
 
-import {
-    convertBICategoriesToSidePanelCategories,
-    convertConfig,
-    filterToolInputSymbolDiagnostics,
-} from "../../../utils/bi";
+import { convertBICategoriesToSidePanelCategories, convertConfig } from "../../../utils/bi";
 import { getImportsForProperty } from "../../../utils/bi";
 import ArtifactForm from "../Forms/ArtifactForm";
 import { RelativeLoader } from "../../../components/RelativeLoader";
-import {
-    createDefaultParameterValue,
-    createToolInputFields,
-    createToolParameters,
-    prepareToolInputFields,
-} from "../AIChatAgent/formUtils";
-import { updateResourcePathProperty } from "../AIChatAgent/agentTools";
+import { createDefaultParameterValue, createToolParameters, HIDDEN_TOOL_NODE_PROPERTY_KEYS } from "../AIChatAgent/formUtils";
 import { REMOTE_ACTION_CALL, RESOURCE_ACTION_CALL } from "../../../constants";
+
+/** Value the user entered for each action parameter, keyed by parameter name — becomes the call args. */
+export type ActivityCallArgs = Record<string, string>;
 
 const LoaderContainer = styled.div`
     display: flex;
@@ -127,8 +118,12 @@ const INITIAL_FIELDS: FormField[] = [
 interface NewActivityFromConnectionProps {
     /** Path of the file the workflow diagram is rendered for. The activity is added to this file. */
     fileName: string;
-    /** Called after the activity function is generated and applied. */
-    onActivityCreated: (activityName: string) => void;
+    /**
+     * Called after the activity function is generated. `callArgs` maps each activity parameter name to
+     * the expression the user entered, so the caller can insert the {@code callActivity} into the
+     * workflow without a second form.
+     */
+    onActivityCreated: (activityName: string, callArgs: ActivityCallArgs) => void;
     /** Navigate back to the activity list (from the connection list). */
     onBack?: () => void;
     /** Close the side panel. */
@@ -136,11 +131,13 @@ interface NewActivityFromConnectionProps {
 }
 
 /**
- * Panel for creating a workflow activity from an existing connection. The user picks a connection,
- * selects one of its actions, and fills a form (activity name/description, activity inputs and the
- * action argument mapping). The backend generates a `@workflow:Activity` function wrapping the action
- * call with the connection as the first parameter (built-in activity pattern). Ported from the AI
- * agent "create tool from connection" flow.
+ * Panel for creating a workflow activity from an existing connection. The user picks a connection
+ * (or creates one), selects one of its actions, and fills a single form: the action's parameters as
+ * normal expression fields (referencing workflow-local variables) plus the activity name, description,
+ * and return type. On save the backend generates a `@workflow:Activity` passthrough wrapper — the
+ * action's parameters become the activity's parameters and are passed straight to the action, closing
+ * over the module-level connection — and the expressions the user entered are handed back as the
+ * {@code callActivity} arguments.
  */
 export function NewActivityFromConnection(props: NewActivityFromConnectionProps): JSX.Element {
     const { fileName, onActivityCreated, onBack, onClose } = props;
@@ -152,27 +149,17 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
     const [recordTypeFields, setRecordTypeFields] = useState<RecordTypeField[]>([]);
     const [loading, setLoading] = useState<boolean>(false);
     const [saving, setSaving] = useState<boolean>(false);
-    // True when the selected action has non-data (non-anydata) params/return; the form then shows a
-    // notice and the activity is generated as a stub with an empty action call.
-    const [showNonDataNotice, setShowNonDataNotice] = useState<boolean>(false);
+    // Set when the action's return type can't be determined (contains object/stream/etc.); the form
+    // then shows a warning and lets the user pick the return type.
+    const [showReturnTypeWarning, setShowReturnTypeWarning] = useState<boolean>(false);
 
     const flowNodeRef = useRef<FlowNode>(null);
     const selectedNodeRef = useRef<AvailableNode>(undefined);
-    const parameterFieldsRef = useRef<ToolParameterItem[]>([]);
     const isSelectingNodeRef = useRef<boolean>(false);
-    const isDataCompatibleRef = useRef<boolean>(true);
-
-    // Suppress undefined-symbol diagnostics for expressions referencing activity input names
-    const customDiagnosticFilter = useCallback((diagnostics: Diagnostic[]) => {
-        if (!parameterFieldsRef.current || parameterFieldsRef.current.length === 0) {
-            return diagnostics;
-        }
-        const activityInputs = parameterFieldsRef.current.map((param) => ({
-            type: param.formValues.type,
-            variable: param.formValues.variable,
-        }));
-        return filterToolInputSymbolDiagnostics(diagnostics, activityInputs);
-    }, []);
+    // The action's parameters (name + type) surfaced in the form; each becomes an activity parameter.
+    const actionParamsRef = useRef<{ key: string; type: string }[]>([]);
+    // Resolved return-type category/type from the LS signal; used as a fallback for the return type.
+    const returnTypeInfoRef = useRef<{ kind?: string; type?: string } | undefined>(undefined);
 
     useEffect(() => {
         fetchConnections();
@@ -299,56 +286,74 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
             flowNodeRef.current = nodeTemplate.flowNode;
             selectedNodeRef.current = metadata.node;
 
-            // An action is data-compatible when all its params and return type are anydata (the same
-            // criterion the agent tool flow uses). Non-data actions can't be wrapped 1:1, so we show a
-            // notice and generate a stub with an empty action call for the user to complete.
-            const compatible =
-                String((metadata?.node as AvailableNode)?.codedata?.data?.agentToolCompatible) !== "false";
-            isDataCompatibleRef.current = compatible;
-            setShowNonDataNotice(!compatible);
+            // Return-type category from the per-action LS signal drives the return-type field:
+            //  - "dependent": databinding-style selector (the action infers the return from a typedesc)
+            //  - "anydata": read-only field showing the concrete return type
+            //  - "undeterminable": editable selector + warning (return contains object/stream/etc.)
+            const returnTypeInfo = (metadata?.node as AvailableNode)?.codedata?.data?.returnTypeInfo as
+                | { kind?: string; type?: string }
+                | undefined;
+            returnTypeInfoRef.current = returnTypeInfo;
+            setShowReturnTypeWarning(returnTypeInfo?.kind === "undeterminable");
 
-            const nodeParameterFields = nodeTemplate.flowNode.properties
-                ? convertConfig(nodeTemplate.flowNode.properties)
-                : [];
-            const activityInputFields = createToolInputFields(prepareToolInputFields(nodeParameterFields));
-            activityInputFields.forEach((field) => {
-                if (field.key === "parameters") {
-                    field.label = "Activity Inputs";
-                    field.documentation = "Define the inputs to provide when calling this activity.";
+            const rawFields = nodeTemplate.flowNode.properties ? convertConfig(nodeTemplate.flowNode.properties) : [];
+            const actionParams: { key: string; type: string }[] = [];
+            const paramFields: FormField[] = [];
+            let returnField: FormField | undefined;
+            for (const field of rawFields) {
+                // Internal properties (connection/checkError/variable/resourcePath) and the type-infer
+                // parameter are not shown; they are kept in the flow node for source generation.
+                if (HIDDEN_TOOL_NODE_PROPERTY_KEYS.includes(field.key) || field.codedata?.kind === "PARAM_FOR_TYPE_INFER") {
+                    continue;
                 }
-            });
-            nodeParameterFields.forEach((field) => {
-                if (getPrimaryInputType(field.types)?.fieldType === "TYPE") {
-                    field.documentation = "The data type this activity returns.";
+                const primary = getPrimaryInputType(field.types);
+                if (field.key === "type" || primary?.fieldType === "TYPE") {
+                    returnField = field;
+                    continue;
                 }
-            });
+                // Action parameter: a normal expression field the user fills with workflow-local values.
+                paramFields.push({
+                    ...field,
+                    value: typeof field.value === "string" ? field.value.replace(/^\$/, "") : field.value,
+                });
+                actionParams.push({ key: field.key, type: primary?.ballerinaType || "" });
+            }
+            actionParamsRef.current = actionParams;
+
+            if (returnField) {
+                if (returnTypeInfo?.kind === "anydata") {
+                    returnField = {
+                        ...returnField,
+                        value: returnTypeInfo.type || returnField.value,
+                        editable: false,
+                        documentation: "The data type this activity returns.",
+                    };
+                } else if (returnTypeInfo?.kind === "undeterminable") {
+                    returnField = {
+                        ...returnField,
+                        value: returnTypeInfo.type || returnField.value,
+                        editable: true,
+                        documentation: "We cannot determine the return type. Select the type this activity returns.",
+                    };
+                } else {
+                    returnField = {
+                        ...returnField,
+                        editable: true,
+                        documentation: "The data type this activity returns.",
+                    };
+                }
+            }
 
             const templateDescription = (nodeTemplate.flowNode?.metadata?.description || "")
                 .replace(/```[\s\S]*?```/g, "")
                 .trim();
-
             const baseFields = INITIAL_FIELDS.map((field) =>
                 field.key === "description" ? { ...field, value: templateDescription } : field
             );
-            // Non-data actions: show only name/description — the action call is generated empty and the
-            // user fills in the logic, so the input/mapping fields would not map cleanly.
             setRecordTypeFields(
-                compatible && nodeTemplate.flowNode.properties
-                    ? extractRecordTypeFields(nodeTemplate.flowNode.properties)
-                    : []
+                nodeTemplate.flowNode.properties ? extractRecordTypeFields(nodeTemplate.flowNode.properties) : []
             );
-            setFields(
-                compatible
-                    ? [
-                          ...baseFields,
-                          ...activityInputFields,
-                          ...nodeParameterFields.map((field) => ({
-                              ...field,
-                              value: typeof field.value === "string" ? field.value.replace(/^\$/, "") : field.value,
-                          })),
-                      ]
-                    : baseFields
-            );
+            setFields([...baseFields, ...paramFields, ...(returnField ? [returnField] : [])]);
             setPanelView(PanelView.ACTIVITY_FORM);
         } catch (error) {
             console.error(">>> Error fetching node template", error);
@@ -356,21 +361,6 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
             setLoading(false);
             isSelectingNodeRef.current = false;
         }
-    };
-
-    const buildActivityParameters = (params: ToolParameterItem[]): ToolParameters => {
-        const activityParameters = createToolParameters();
-        activityParameters.metadata = { label: "Parameters", description: "Activity function parameters" };
-        const parametersValue = activityParameters.value as ToolParametersValue;
-        for (const param of params ?? []) {
-            const { variable, parameterDescription, type } = param.formValues;
-            parametersValue[variable] = createDefaultParameterValue({
-                value: variable,
-                parameterDescription,
-                type,
-            });
-        }
-        return activityParameters;
     };
 
     const handleActivitySubmit = async (data: FormValues, formImports?: FormImports) => {
@@ -385,46 +375,66 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
             console.error(">>> Node template not found");
             return;
         }
-        const nodeId = clonedFlowNode.codedata.node;
-        const activityParameters = buildActivityParameters(data["parameters"] as ToolParameterItem[]);
+        const newProperties = { ...(clonedFlowNode.properties || {}) } as Record<string, Property>;
 
-        // Write the form values into the action call's properties
-        if (clonedFlowNode.properties) {
-            const newProperties = { ...clonedFlowNode.properties } as Record<string, Property>;
-            Object.keys(newProperties).forEach((key) => {
-                const paramValue = data[key];
-                if (paramValue !== undefined && newProperties[key]) {
-                    newProperties[key] = { ...newProperties[key], value: paramValue };
-                }
-                if (nodeId === RESOURCE_ACTION_CALL) {
-                    const resourcePathProperty = newProperties["resourcePath"];
-                    if (resourcePathProperty && paramValue !== undefined) {
-                        newProperties["resourcePath"] = updateResourcePathProperty(
-                            resourcePathProperty,
-                            key,
-                            paramValue
-                        );
-                    }
-                }
-            });
-            clonedFlowNode.properties = newProperties as NodeProperties;
-        }
+        // Each filled action parameter becomes an activity parameter (passthrough): the activity
+        // signature takes `<type> <name>`, the body passes `<name>` to the action, and the expression
+        // the user entered becomes the callActivity argument for `<name>`.
+        const activityParameters: ToolParameters = createToolParameters();
+        activityParameters.metadata = { label: "Parameters", description: "Activity function parameters" };
+        const parametersValue = activityParameters.value as ToolParametersValue;
+        const callArgs: ActivityCallArgs = {};
 
-        // Merge parameter type imports onto a flowNode property so genActivity includes them
-        const paramImports = formImports ? getImportsForProperty("parameters", formImports) : undefined;
-        if (paramImports && clonedFlowNode.properties) {
-            const props = clonedFlowNode.properties as Record<string, Property>;
-            const targetKey = props["type"] ? "type" : Object.keys(props)[0];
-            if (targetKey && props[targetKey]) {
-                // Strip version suffix to match the format the backend expects
-                const cleanedImports: Record<string, string> = {};
-                for (const [prefix, moduleId] of Object.entries(paramImports)) {
-                    cleanedImports[prefix] = moduleId.replace(/:[^/]+$/, "");
-                }
-                props[targetKey].imports = { ...props[targetKey].imports, ...cleanedImports };
+        for (const { key, type } of actionParamsRef.current) {
+            const property = newProperties[key];
+            const userExpr = data[key];
+            const filled = userExpr !== undefined && String(userExpr) !== "";
+            const required = property ? property.optional === false : true;
+            if (!filled && !required) {
+                // Optional parameter left blank: not an activity parameter; the action uses its default.
+                continue;
+            }
+            parametersValue[key] = createDefaultParameterValue({ value: key, type });
+            if (filled) {
+                callArgs[key] = String(userExpr);
+            }
+            // Path parameters are referenced by name inside the resource path (not passed as arguments),
+            // so leave their property untouched. Every other parameter passes its name to the action.
+            const kind = property?.codedata?.kind;
+            const isPathParam = kind === "PATH_PARAM" || kind === "PATH_REST_PARAM";
+            if (property && !isPathParam) {
+                newProperties[key] = { ...property, value: key };
             }
         }
 
+        // Return type chosen/derived in the form (fall back to the LS-resolved type for the read-only
+        // anydata case, where the field value may not be submitted).
+        const returnType = data["type"] ?? returnTypeInfoRef.current?.type;
+        if (returnType !== undefined && returnType !== "" && newProperties["type"]) {
+            newProperties["type"] = { ...newProperties["type"], value: returnType };
+        }
+
+        // Merge the parameter/return type imports onto the type property so genActivity emits them.
+        if (formImports) {
+            const merged: Record<string, string> = {};
+            for (const { key } of [...actionParamsRef.current, { key: "type" }]) {
+                const imports = getImportsForProperty(key, formImports);
+                if (imports) {
+                    for (const [prefix, moduleId] of Object.entries(imports)) {
+                        merged[prefix] = moduleId.replace(/:[^/]+$/, "");
+                    }
+                }
+            }
+            const targetKey = newProperties["type"] ? "type" : Object.keys(newProperties)[0];
+            if (Object.keys(merged).length > 0 && targetKey && newProperties[targetKey]) {
+                newProperties[targetKey] = {
+                    ...newProperties[targetKey],
+                    imports: { ...newProperties[targetKey].imports, ...merged },
+                };
+            }
+        }
+
+        clonedFlowNode.properties = newProperties as NodeProperties;
         clonedFlowNode.codedata.isNew = true;
         clonedFlowNode.codedata.lineRange = {
             fileName: fileName.split(/[\\/]/).pop(),
@@ -441,8 +451,6 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 description: data["description"] || "",
                 connection: selectedNodeRef.current?.codedata?.parentSymbol || "",
                 activityParameters,
-                // Non-data actions are generated as a stub with an empty action call.
-                emptyActionArgs: !isDataCompatibleRef.current,
             });
             if (response?.errorMsg) {
                 console.error(">>> Error creating activity from connection", response);
@@ -451,7 +459,7 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 });
                 return;
             }
-            onActivityCreated(cleanName);
+            onActivityCreated(cleanName, callArgs);
         } catch (error) {
             console.error(">>> Error creating activity from connection", { error });
             await rpcClient.getCommonRpcClient().showErrorMessage({
@@ -481,10 +489,10 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                     panelBodySx={{ height: "calc(100vh - 140px)" }}
                 />
             )}
-            {!saving && panelView === PanelView.ACTIVITY_FORM && showNonDataNotice && (
+            {!saving && panelView === PanelView.ACTIVITY_FORM && showReturnTypeWarning && (
                 <NoticeBanner>
-                    This action contains non-data types. The activity is created with an empty action call —
-                    please edit the activity function logic to handle those types.
+                    We cannot determine the return type of this action (it contains object/stream types). Select the
+                    return type below; the generated <code>return</code> statement may need adjusting to match it.
                 </NoticeBanner>
             )}
             {!saving && panelView === PanelView.ACTIVITY_FORM && (
@@ -498,12 +506,6 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                     onBack={() => setPanelView(PanelView.CONNECTION_LIST)}
                     submitText={"Create Activity"}
                     helperPaneSide="left"
-                    customDiagnosticFilter={customDiagnosticFilter}
-                    onChange={(fieldKey, value) => {
-                        if (fieldKey === "parameters") {
-                            parameterFieldsRef.current = value as ToolParameterItem[];
-                        }
-                    }}
                     injectedComponents={[
                         {
                             component: (

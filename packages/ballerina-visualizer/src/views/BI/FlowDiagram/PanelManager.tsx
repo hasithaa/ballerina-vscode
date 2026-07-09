@@ -127,7 +127,7 @@ interface PanelManagerProps {
     onAddWorkflow?: () => void;
     onAddActivity?: () => void;
     onAddActivityFromConnection?: () => void;
-    onActivityFromConnectionCreated?: (activityName: string) => void;
+    onActivityFromConnectionCreated?: (activityName: string, callArgs: Record<string, string>) => void;
     onAddNPFunction?: () => void;
     onAddDataMapper?: () => void;
     onAddModelProvider?: () => void;

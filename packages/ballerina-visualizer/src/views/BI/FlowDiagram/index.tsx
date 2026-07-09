@@ -2349,9 +2349,13 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         setShowSidePanel(true);
     };
 
-    const handleActivityFromConnectionCreated = async (activityName: string) => {
-        // After the activity function is generated, open its call form at the current workflow
-        // position so the activity is added to the workflow logic (not just listed).
+    const handleActivityFromConnectionCreated = async (
+        activityName: string,
+        callArgs: Record<string, string> = {}
+    ) => {
+        // After the activity function is generated, insert its call into the workflow at the current
+        // position — pre-filled with the expressions entered in the create form, so there is no second
+        // form to fill.
         setShowProgressIndicator(true);
         try {
             const response = await rpcClient.getBIDiagramRpcClient().search({
@@ -2375,19 +2379,34 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                     filePath: model?.fileName,
                     id: newActivityNode.codedata,
                 });
-                selectedNodeRef.current = template.flowNode;
-                nodeTemplateRef.current = template.flowNode;
+                const callNode = template.flowNode;
+                // The call node's parameters are the activity's parameters (same names as the action
+                // params filled in the create form). Seed them with the captured expressions.
+                if (callNode?.properties) {
+                    for (const [key, value] of Object.entries(callArgs)) {
+                        const property = (callNode.properties as Record<string, { value?: unknown }>)[key];
+                        if (property) {
+                            property.value = value;
+                        }
+                    }
+                }
+                callNode.codedata.isNew = true;
+                callNode.codedata.lineRange = {
+                    fileName: template.flowNode.codedata?.lineRange?.fileName || model?.fileName,
+                    startLine: targetRef.current.startLine,
+                    endLine: targetRef.current.startLine,
+                };
+                selectedNodeRef.current = callNode;
+                nodeTemplateRef.current = callNode;
                 showEditForm.current = false;
-                // The activity list frame pushed on entry stays on the stack, so the form's back
-                // button returns to the activity list.
-                setSidePanelView(SidePanelView.FORM);
-                setShowSidePanel(true);
+                // Insert the call directly (no form) — the arguments are already filled in.
+                await handleOnFormSubmit(callNode);
                 return;
             }
             // Fallback: could not resolve the new activity — just refresh the activity list.
             await handleActivityAdded();
         } catch (error) {
-            console.error(">>> Error opening call form for the created activity", error);
+            console.error(">>> Error inserting the call for the created activity", error);
             await handleActivityAdded();
         } finally {
             setShowProgressIndicator(false);
