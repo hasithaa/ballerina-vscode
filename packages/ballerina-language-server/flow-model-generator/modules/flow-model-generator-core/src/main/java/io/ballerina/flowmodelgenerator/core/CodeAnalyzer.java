@@ -148,6 +148,8 @@ import io.ballerina.flowmodelgenerator.core.model.node.ChunkerBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.ClassInitBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DataLoaderBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DataMapperBuilder;
+import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentAddActivityBuilder;
+import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentHumanTaskBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentRunBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.EmbeddingProviderBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.FailBuilder;
@@ -1071,8 +1073,9 @@ public class CodeAnalyzer extends NodeVisitor {
         collectDurableAgentCapabilities(callNode);
     }
 
-    // Scans the enclosing durable-agent function body for registerActivities/registerHumanTask
-    // calls and attaches their names to the run node's metadata for the agent-box visualization.
+    // Scans the enclosing durable-agent function body for registerActivity/registerHumanTask
+    // calls and attaches them (name, statement line range, and — for human tasks — the parsed
+    // argument values) to the run node's metadata for the clickable agent-box circles.
     private void collectDurableAgentCapabilities(MethodCallExpressionNode runCallNode) {
         NonTerminalNode parent = runCallNode.parent();
         while (parent != null && !(parent instanceof FunctionDefinitionNode)) {
@@ -1081,8 +1084,8 @@ public class CodeAnalyzer extends NodeVisitor {
         if (parent == null) {
             return;
         }
-        List<ToolData> activities = new ArrayList<>();
-        List<ToolData> humanTasks = new ArrayList<>();
+        List<AgentCapabilityData> activities = new ArrayList<>();
+        List<AgentCapabilityData> humanTasks = new ArrayList<>();
         ((FunctionDefinitionNode) parent).functionBody().accept(new NodeVisitor() {
             @Override
             public void visit(MethodCallExpressionNode methodCall) {
@@ -1092,13 +1095,18 @@ public class CodeAnalyzer extends NodeVisitor {
                         && !args.isEmpty() && args.get(0) instanceof PositionalArgumentNode posArg
                         && (posArg.expression().kind() == SyntaxKind.SIMPLE_NAME_REFERENCE
                         || posArg.expression().kind() == SyntaxKind.QUALIFIED_NAME_REFERENCE)) {
-                    activities.add(new ToolData(posArg.expression().toSourceCode().trim(), null, "", "activity"));
+                    String activityRef = posArg.expression().toSourceCode().trim();
+                    Map<String, String> values = new LinkedHashMap<>();
+                    values.put(DurableAgentAddActivityBuilder.ACTIVITY_KEY, activityRef);
+                    activities.add(new AgentCapabilityData(activityRef, "activity",
+                            statementLineRange(methodCall), values));
                 } else if (REGISTER_HUMAN_TASK_METHOD_NAME.equals(methodName)
                         && !args.isEmpty() && args.get(0) instanceof PositionalArgumentNode taskArg
                         && taskArg.expression().kind() == SyntaxKind.STRING_LITERAL) {
                     String raw = taskArg.expression().toSourceCode().trim();
                     if (raw.length() >= 2 && raw.startsWith("\"") && raw.endsWith("\"")) {
-                        humanTasks.add(new ToolData(raw.substring(1, raw.length() - 1), null, "", "humanTask"));
+                        humanTasks.add(new AgentCapabilityData(raw.substring(1, raw.length() - 1), "humanTask",
+                                statementLineRange(methodCall), parseHumanTaskArgs(args)));
                     }
                 }
                 methodCall.arguments().forEach(arg -> arg.accept(this));
@@ -1107,6 +1115,43 @@ public class CodeAnalyzer extends NodeVisitor {
         });
         nodeBuilder.metadata().addData("activities", activities);
         nodeBuilder.metadata().addData("humanTasks", humanTasks);
+    }
+
+    // The line range of the whole statement enclosing a capability method call, used to
+    // edit/replace the registration when its agent-box circle is clicked.
+    private static LineRange statementLineRange(MethodCallExpressionNode methodCall) {
+        NonTerminalNode node = methodCall;
+        while (node != null && !(node instanceof ExpressionStatementNode)) {
+            node = node.parent();
+        }
+        return (node != null ? node : methodCall).lineRange();
+    }
+
+    // Parses registerHumanTask arguments into the human-task builder's property keys so the
+    // edit form opens pre-filled. Values keep their source form (quoted literals included).
+    private static Map<String, String> parseHumanTaskArgs(SeparatedNodeList<FunctionArgumentNode> args) {
+        Map<String, String> values = new LinkedHashMap<>();
+        int positional = 0;
+        for (FunctionArgumentNode arg : args) {
+            if (arg instanceof PositionalArgumentNode posArg) {
+                if (positional == 0) {
+                    values.put(DurableAgentHumanTaskBuilder.TASK_NAME_KEY, posArg.expression().toSourceCode().trim());
+                } else if (positional == 1) {
+                    values.put(DurableAgentHumanTaskBuilder.USER_ROLES_KEY, posArg.expression().toSourceCode().trim());
+                }
+                positional++;
+            } else if (arg instanceof NamedArgumentNode namedArg) {
+                String name = namedArg.argumentName().name().text();
+                if (DurableAgentHumanTaskBuilder.TITLE_KEY.equals(name)
+                        || DurableAgentHumanTaskBuilder.DESCRIPTION_KEY.equals(name)) {
+                    values.put(name, namedArg.expression().toSourceCode().trim());
+                }
+            }
+        }
+        return values;
+    }
+
+    private record AgentCapabilityData(String name, String type, LineRange lineRange, Map<String, String> values) {
     }
 
     /**

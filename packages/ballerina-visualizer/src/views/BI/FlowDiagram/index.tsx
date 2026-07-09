@@ -1625,8 +1625,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                     break;
                 }
 
-                // Selecting an activity from the list opens the registerActivities form.
-                selectedClientName.current = category;
+                // Selecting an activity from the list is a complete choice — generate the
+                // registerActivity statement directly (no intermediate form) and close the panel.
                 setShowProgressIndicator(true);
                 rpcClient
                     .getBIDiagramRpcClient()
@@ -1635,12 +1635,23 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                         filePath: model?.fileName || fileName,
                         id: node.codedata,
                     })
-                    .then((response) => {
-                        selectedNodeRef.current = response.flowNode;
-                        nodeTemplateRef.current = response.flowNode;
-                        showEditForm.current = false;
-                        setSidePanelView(SidePanelView.FORM);
-                        setShowSidePanel(true);
+                    .then(async (response) => {
+                        const activityNode = response.flowNode;
+                        activityNode.codedata.isNew = true;
+                        activityNode.codedata.lineRange = {
+                            fileName: model?.fileName,
+                            startLine: targetRef.current.startLine,
+                            endLine: targetRef.current.startLine,
+                        } as any;
+                        await rpcClient.getBIDiagramRpcClient().getSourceCode({
+                            filePath: model.fileName,
+                            flowNode: activityNode,
+                        });
+                        durableAgentActivityListRef.current = false;
+                        closeSidePanelAndFetchUpdatedFlowModel();
+                    })
+                    .catch((error) => {
+                        console.error(">>> Error registering activity on the agent", error);
                     })
                     .finally(() => {
                         setShowProgressIndicator(false);
@@ -2977,7 +2988,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 id: { node: "DURABLE_AGENT_HUMAN_TASK" },
             })
             .then((response) => {
-                selectedNodeRef.current = undefined;
+                // The FORM reads the node from selectedNodeRef; both refs must point at the
+                // template or the form renders empty.
+                selectedNodeRef.current = response.flowNode;
                 nodeTemplateRef.current = response.flowNode;
                 showEditForm.current = false;
                 setSidePanelView(SidePanelView.FORM);
@@ -2986,6 +2999,45 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             .finally(() => {
                 setShowProgressIndicator(false);
             });
+    };
+
+    // Opens the edit form for an already-registered activity or human task (from clicking its
+    // agent-box circle). The capability metadata carries the statement line range and its parsed
+    // argument values, so the form opens pre-filled and saving rewrites that statement.
+    const handleOnEditDurableCapability = async (runNode: FlowNode, capability: any) => {
+        const lineRange = capability?.lineRange;
+        if (!lineRange) {
+            return;
+        }
+        const nodeKind = capability?.type === "activity" ? "DURABLE_AGENT_ADD_ACTIVITY" : "DURABLE_AGENT_HUMAN_TASK";
+        targetRef.current = lineRange;
+        setTargetLineRange(lineRange);
+        setShowProgressIndicator(true);
+        try {
+            const response = await rpcClient.getBIDiagramRpcClient().getNodeTemplate({
+                position: lineRange.startLine,
+                filePath: model?.fileName,
+                id: { node: nodeKind } as any,
+            });
+            const node = response.flowNode;
+            // Seed the form with the existing statement's values and point it at that statement.
+            const values = (capability?.values || {}) as Record<string, string>;
+            const nodeProps = node.properties as Record<string, { value: unknown }>;
+            for (const [key, value] of Object.entries(values)) {
+                if (nodeProps?.[key]) {
+                    nodeProps[key].value = value;
+                }
+            }
+            node.codedata.lineRange = lineRange;
+            node.codedata.isNew = false;
+            selectedNodeRef.current = node;
+            nodeTemplateRef.current = node;
+            showEditForm.current = true;
+            setSidePanelView(SidePanelView.FORM);
+            setShowSidePanel(true);
+        } finally {
+            setShowProgressIndicator(false);
+        }
     };
 
     const handleOnEditAgentModel = async (agentCallNode: FlowNode) => {
@@ -3447,6 +3499,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 onAddTool: handleOnAddTool,
                 onAddActivity: handleOnAddDurableActivity,
                 onAddHumanTask: handleOnAddDurableHumanTask,
+                onEditCapability: handleOnEditDurableCapability,
                 onAddMcpServer: handleOnAddMcpServer,
                 onSelectTool: handleOnSelectTool,
                 onSelectMcpToolkit: handleOnSelectMcpToolkit,

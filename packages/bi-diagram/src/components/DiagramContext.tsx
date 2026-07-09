@@ -110,6 +110,7 @@ export interface DiagramContextState {
         onChatWithAgent?: (node: FlowNode) => void;
         onAddActivity?: (node: FlowNode) => void;
         onAddHumanTask?: (node: FlowNode) => void;
+        onEditCapability?: (node: FlowNode, capability: any) => void;
     };
     aiNodes?: {
         onModelSelect: (node: FlowNode) => void;

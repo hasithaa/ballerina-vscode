@@ -339,8 +339,13 @@ type DurableAgentNodeMetadata = NodeMetadata & {
     humanTasks?: ToolData[];
 };
 
+type AgentCapability = ToolData & {
+    lineRange?: any;
+    values?: Record<string, string>;
+};
+
 type CapabilityItem = {
-    data: ToolData;
+    data: AgentCapability;
     kind: "tool" | "activity" | "humanTask";
 };
 
@@ -442,6 +447,13 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
         setMenuPos(null);
     };
 
+    const onCapabilityClick = (item: CapabilityItem) => {
+        if (readOnly) {
+            return;
+        }
+        agentNode?.onEditCapability?.(model.node, { ...item.data, type: item.kind });
+    };
+
     const onAddActivityClick = () => {
         if (readOnly) {
             return;
@@ -494,8 +506,8 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
     // Capability circles rendered on the right side: AI tools, activities and human tasks.
     const capabilityItems: CapabilityItem[] = [
         ...(nodeMetadata?.tools || []).map((tool: ToolData): CapabilityItem => ({ data: tool, kind: "tool" })),
-        ...(nodeMetadata?.activities || []).map((activity: ToolData): CapabilityItem => ({ data: activity, kind: "activity" })),
-        ...(nodeMetadata?.humanTasks || []).map((humanTask: ToolData): CapabilityItem => ({ data: humanTask, kind: "humanTask" })),
+        ...(nodeMetadata?.activities || []).map((activity: AgentCapability): CapabilityItem => ({ data: activity, kind: "activity" })),
+        ...(nodeMetadata?.humanTasks || []).map((humanTask: AgentCapability): CapabilityItem => ({ data: humanTask, kind: "humanTask" })),
     ];
 
     let containerHeight =
@@ -732,6 +744,14 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
                                 strokeWidth={1.5}
                                 strokeDasharray={disabled ? "5 5" : "none"}
                                 opacity={disabled ? 0.7 : 1}
+                                onClick={item.kind === "tool" ? undefined : () => onCapabilityClick(item)}
+                                css={css`
+                                    cursor: ${readOnly || item.kind === "tool" ? "default" : "pointer"};
+                                    transition: stroke 0.4s ease-out;
+                                    &:hover {
+                                        stroke: ${readOnly || item.kind === "tool" ? NODE_BORDER_COLOR : NODE_BORDER_SELECTED_COLOR};
+                                    }
+                                `}
                             >
                                 <title>{itemName}</title>
                             </circle>
