@@ -81,13 +81,16 @@ public class ActivityGenerator {
      * @param connectionName     name of the module-level connection variable the action was selected from;
      *                           referenced by name in the generated activity body
      * @param description        description of the activity (emitted as the doc comment)
+     * @param emptyActionArgs    when {@code true}, the wrapped action call is generated with no
+     *                           arguments (used when the action has non-data types the user must
+     *                           fill in manually)
      * @param filePath           path of the file to add the activity function to
      * @param workspaceManager   the workspace manager
      * @return the text edits to apply
      */
     public JsonElement genActivity(JsonElement node, String activityName, JsonElement activityParameters,
-                                   String connectionName, String description, Path filePath,
-                                   WorkspaceManager workspaceManager) {
+                                   String connectionName, String description, boolean emptyActionArgs,
+                                   Path filePath, WorkspaceManager workspaceManager) {
         FlowNode flowNode = gson.fromJson(node, FlowNode.class);
         Property activityParams = gson.fromJson(activityParameters, Property.class);
         NodeKind nodeKind = flowNode.codedata().node();
@@ -109,6 +112,12 @@ public class ActivityGenerator {
         // The connection is a module-level global referenced by name in the body (not a parameter);
         // validate it exists so a stale/deleted connection surfaces a clear error.
         validateConnectionExists(connectionName);
+
+        // When the action has non-data types, generate the call with no arguments (a stub the user
+        // completes): ignore every action property so no arguments are emitted for the call.
+        if (emptyActionArgs && flowNode.properties() != null) {
+            ignoredKeys.addAll(flowNode.properties().keySet());
+        }
 
         // Documentation: description, activity inputs, return value
         boolean hasDescription = AgentsGenerator.genDescription(description, sourceBuilder);
