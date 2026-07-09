@@ -25,8 +25,12 @@ import {
     Category,
     CodeData,
     Diagnostic,
+    DIRECTORY_MAP,
+    EVENT_TYPE,
     FlowNode,
+    MACHINE_VIEW,
     NodeProperties,
+    ParentPopupData,
     Property,
     RecordTypeField,
     ToolParameterItem,
@@ -156,6 +160,29 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
     useEffect(() => {
         fetchConnections();
     }, []);
+
+    // When the "Add Connection" wizard (launched from the connection list) finishes, a new global
+    // connection has been written to connections.bal — refresh the list so it appears.
+    useEffect(() => {
+        rpcClient.onParentPopupSubmitted((parent: ParentPopupData) => {
+            if (parent.artifactType === DIRECTORY_MAP.CONNECTION) {
+                fetchConnections();
+            }
+        });
+    }, [rpcClient]);
+
+    // Launch the standard (global) connection-creation wizard, mirroring the AI agent tool flow.
+    // The connection is created in connections.bal; the popup-submitted effect refreshes the list.
+    const handleAddConnection = () => {
+        rpcClient.getVisualizerRpcClient().openView({
+            type: EVENT_TYPE.OPEN_VIEW,
+            location: {
+                view: MACHINE_VIEW.AddConnectionWizard,
+                documentUri: fileName,
+            },
+            isPopup: true,
+        });
+    };
 
     const fetchConnections = async () => {
         setLoading(true);
@@ -407,6 +434,7 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 <NodeList
                     categories={categories}
                     onSelect={handleOnSelectNode}
+                    onAddConnection={handleAddConnection}
                     onClose={onClose}
                     onBack={onBack}
                     title={"Connections"}
