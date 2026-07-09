@@ -392,6 +392,19 @@ export function DiagramWrapper(param: DiagramWrapperProps) {
             return;
         }
 
+        if (isDurableAgent) {
+            rpcClient.getVisualizerRpcClient().openView({
+                type: EVENT_TYPE.OPEN_VIEW,
+                location: {
+                    view: MACHINE_VIEW.BIDurableAgentForm,
+                    identifier: parentMetadata?.label || "",
+                    documentUri: fileUri,
+                    position: position || currentPosition,
+                }
+            });
+            return;
+        }
+
         if (isActivity) {
             rpcClient.getVisualizerRpcClient().openView({
                 type: EVENT_TYPE.OPEN_VIEW,
@@ -424,6 +437,7 @@ export function DiagramWrapper(param: DiagramWrapperProps) {
     let isAgent = parentMetadata?.kind === "AI Chat Agent" && parentMetadata?.label === "chat";
     let isInitFunction = parentMetadata?.kind === "Function" && parentMetadata?.label === "init";
     let isWorkflow = parentMetadata?.kind === "Workflow";
+    let isDurableAgent = parentMetadata?.kind === "Durable Agent";
     let isActivity = parentMetadata?.kind === "Activity";
     let isNPFunction = view === FOCUS_FLOW_DIAGRAM_VIEW.NP_FUNCTION;
 

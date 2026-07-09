@@ -609,6 +609,12 @@ export type NodeKind =
     | "WHILE"
     | "WORKFLOW"
     | "WORKFLOW_RUN"
+    | "DURABLE_AGENT"
+    | "DURABLE_AGENT_MODEL_PROVIDER"
+    | "DURABLE_AGENT_ADD_ACTIVITY"
+    | "DURABLE_AGENT_ADD_TOOL"
+    | "DURABLE_AGENT_HUMAN_TASK"
+    | "DURABLE_AGENT_RUN"
     | "WORKER"
     | "RECORD"
     | "VARIABLE";

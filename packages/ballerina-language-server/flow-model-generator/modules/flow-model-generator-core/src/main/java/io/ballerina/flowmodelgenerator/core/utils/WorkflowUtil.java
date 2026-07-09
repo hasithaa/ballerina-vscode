@@ -108,6 +108,114 @@ public class WorkflowUtil {
     }
 
     /**
+     * Checks if the given function symbol has the @workflow:DurableAgent annotation.
+     *
+     * @param symbol The function symbol to check
+     * @return true if the function has @workflow:DurableAgent annotation, false otherwise
+     */
+    public static boolean isDurableAgentFunction(Symbol symbol) {
+        return hasWorkflowAnnotation(symbol, Constants.Workflow.DURABLE_AGENT);
+    }
+
+    /**
+     * Checks whether the cursor node is inside a @workflow:DurableAgent function.
+     *
+     * @param semanticModel the semantic model
+     * @param node          the node at the cursor position
+     * @return true when the enclosing function is a durable agent
+     */
+    public static boolean isInsideDurableAgentFunction(SemanticModel semanticModel, Node node) {
+        Node parent = node;
+        while (parent != null) {
+            if (parent.kind() == SyntaxKind.FUNCTION_DEFINITION) {
+                return isDurableAgentFunction(semanticModel.symbol(parent).orElse(null));
+            }
+            parent = parent.parent();
+        }
+        return false;
+    }
+
+    private static boolean hasWorkflowAnnotation(Symbol symbol, String annotationName) {
+        if (symbol == null || symbol.kind() != SymbolKind.FUNCTION) {
+            return false;
+        }
+        for (AnnotationAttachmentSymbol attachment : ((FunctionSymbol) symbol).annotAttachments()) {
+            AnnotationSymbol annotation = attachment.typeDescriptor();
+            Optional<String> name = annotation.getName();
+            if (name.isPresent() && annotationName.equals(name.get()) && isWorkflowModule(annotation.getModule())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Finds the enclosing @workflow:DurableAgent function definition for the source builder's insertion point.
+     *
+     * @param sourceBuilder the source builder carrying the flow node's line range
+     * @return the enclosing durable agent function, or null when not found
+     */
+    public static FunctionDefinitionNode findEnclosingDurableAgentFunction(SourceBuilder sourceBuilder) {
+        Document document = FileSystemUtils.getDocument(sourceBuilder.workspaceManager, sourceBuilder.filePath);
+        SemanticModel semanticModel = FileSystemUtils.getSemanticModel(sourceBuilder.workspaceManager,
+                sourceBuilder.filePath);
+        LineRange lineRange = sourceBuilder.flowNode.codedata().lineRange();
+        if (lineRange == null) {
+            return null;
+        }
+
+        SyntaxTree syntaxTree = document.syntaxTree();
+        int txtPos = document.textDocument().textPositionFrom(lineRange.startLine());
+        TextRange range = TextRange.from(txtPos, 0);
+
+        Node parent = ((ModulePartNode) syntaxTree.rootNode()).findNode(range);
+        while (parent != null) {
+            if (parent.kind() == SyntaxKind.FUNCTION_DEFINITION) {
+                return isDurableAgentFunction(semanticModel.symbol(parent).orElse(null))
+                        ? (FunctionDefinitionNode) parent : null;
+            }
+            parent = parent.parent();
+        }
+        return null;
+    }
+
+    /**
+     * Resolves the name of the {@code workflow:AgentContext} parameter of the enclosing durable agent
+     * function, defaulting to {@code ctx} (the generated signature always declares one).
+     *
+     * @param sourceBuilder the source builder carrying the flow node's line range
+     * @return the agent context parameter name
+     */
+    public static String resolveAgentContextParamName(SourceBuilder sourceBuilder) {
+        try {
+            sourceBuilder.workspaceManager.loadProject(sourceBuilder.filePath);
+        } catch (Exception e) {
+            return Constants.Workflow.DEFAULT_CTX_PARAM_NAME;
+        }
+        FunctionDefinitionNode agentFunction = findEnclosingDurableAgentFunction(sourceBuilder);
+        if (agentFunction == null) {
+            return Constants.Workflow.DEFAULT_CTX_PARAM_NAME;
+        }
+        SemanticModel semanticModel = FileSystemUtils.getSemanticModel(sourceBuilder.workspaceManager,
+                sourceBuilder.filePath);
+        for (io.ballerina.compiler.syntax.tree.ParameterNode parameter
+                : agentFunction.functionSignature().parameters()) {
+            Optional<Symbol> symbol = semanticModel.symbol(parameter);
+            if (symbol.isEmpty() || symbol.get().kind() != SymbolKind.PARAMETER) {
+                continue;
+            }
+            ParameterSymbol paramSymbol = (ParameterSymbol) symbol.get();
+            TypeSymbol typeDesc = TypeUtils.resolveTypeReference(paramSymbol.typeDescriptor());
+            boolean isAgentContext = isWorkflowModule(typeDesc.getModule())
+                    && typeDesc.getName().map(Constants.Workflow.AGENT_CONTEXT_CLASS_NAME::equals).orElse(false);
+            if (isAgentContext && paramSymbol.getName().isPresent()) {
+                return paramSymbol.getName().get();
+            }
+        }
+        return Constants.Workflow.DEFAULT_CTX_PARAM_NAME;
+    }
+
+    /**
      * Checks if the given function symbol has the @workflow:Activity annotation.
      *
      * @param symbol symbol to check

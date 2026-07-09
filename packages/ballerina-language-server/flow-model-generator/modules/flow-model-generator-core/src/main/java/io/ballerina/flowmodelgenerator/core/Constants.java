@@ -143,6 +143,29 @@ public class Constants {
         public static final String SLEEP_METHOD_NAME = "sleep";
         public static final String SLEEP_LABEL = "Sleep";
         public static final String SLEEP_DESCRIPTION = "Pause workflow execution for a specified duration";
+
+        // Durable agent constants
+        public static final String DURABLE_AGENT = "DurableAgent";
+        public static final String AGENT_CONTEXT_CLASS_NAME = "AgentContext";
+        public static final String SET_MODEL_PROVIDER_METHOD_NAME = "setModelProvider";
+        public static final String SET_MODEL_PROVIDER_LABEL = "Set AI Model Provider";
+        public static final String SET_MODEL_PROVIDER_DESCRIPTION =
+                "Set the model provider used for the agent's LLM calls";
+        public static final String REGISTER_ACTIVITIES_METHOD_NAME = "registerActivities";
+        public static final String REGISTER_ACTIVITY_LABEL = "Add Activity";
+        public static final String REGISTER_ACTIVITY_DESCRIPTION =
+                "Register a workflow activity as a durable agent tool";
+        public static final String REGISTER_TOOLS_METHOD_NAME = "registerTools";
+        public static final String REGISTER_TOOL_LABEL = "Add Tool";
+        public static final String REGISTER_TOOL_DESCRIPTION = "Register an AI tool with the durable agent";
+        public static final String REGISTER_HUMAN_TASK_METHOD_NAME = "registerHumanTask";
+        public static final String REGISTER_HUMAN_TASK_LABEL = "Add Human Task";
+        public static final String REGISTER_HUMAN_TASK_DESCRIPTION =
+                "Register a human task the agent can create and wait on";
+        public static final String RUN_DURABLE_AGENT_METHOD_NAME = "runDurableAgent";
+        public static final String RUN_DURABLE_AGENT_LABEL = "Run Agent";
+        public static final String RUN_DURABLE_AGENT_DESCRIPTION =
+                "Run the durable agent loop with the configured capabilities";
     }
 
     // Constants used for AI

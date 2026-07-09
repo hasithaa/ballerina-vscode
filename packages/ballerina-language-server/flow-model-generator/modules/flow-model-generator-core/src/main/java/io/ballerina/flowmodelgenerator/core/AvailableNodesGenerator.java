@@ -101,6 +101,9 @@ public class AvailableNodesGenerator {
     private static final String BALLERINAX = "ballerinax";
     private static final String TEST_MODULE_PREFIX = "test";
     private static final String TEST_CONFIG_ANNOTATION = "Config";
+    // Set per getAvailableNodes call: inside a @workflow:DurableAgent function the palette
+    // shows only the "Configure Durable Agent" group.
+    private boolean inDurableAgentFunction = false;
 
     public AvailableNodesGenerator(SemanticModel semanticModel, Document document, Package pkg, Path filePath) {
         this.rootBuilder = new Category.Builder(null).name(Category.Name.ROOT);
@@ -117,8 +120,9 @@ public class AvailableNodesGenerator {
                 && "true".equals(queryMap.get("checkAgentToolCompatibility"));
 
         boolean isInWorkflowFunction = isInsideWorkflowFunction(position);
+        this.inDurableAgentFunction = isInsideDurableAgentFunction(position);
 
-        if (!isInWorkflowFunction) {
+        if (!isInWorkflowFunction && !this.inDurableAgentFunction) {
             List<Category> connections = new ArrayList<>();
             List<Symbol> symbols = semanticModel.visibleSymbols(document, position);
             for (Symbol symbol : symbols) {
@@ -135,7 +139,7 @@ public class AvailableNodesGenerator {
         boolean insideTestFunction = isInsideTestFunction(position);
         List<Item> items = new ArrayList<>();
         items.addAll(getAvailableFlowNodes(position, disableBallerinaAiNodes, isInWorkflowFunction));
-        if (!isInWorkflowFunction) {
+        if (!isInWorkflowFunction && !this.inDurableAgentFunction) {
             items.addAll(LocalIndexCentral.getInstance().getFunctions());
         }
         if (insideTestFunction) {
@@ -149,6 +153,17 @@ public class AvailableNodesGenerator {
         }
 
         return jsonArray;
+    }
+
+    private boolean isInsideDurableAgentFunction(LinePosition position) {
+        try {
+            int txtPos = this.document.textDocument().textPositionFrom(position);
+            TextRange range = TextRange.from(txtPos, 0);
+            NonTerminalNode node = ((ModulePartNode) document.syntaxTree().rootNode()).findNode(range);
+            return WorkflowUtil.isInsideDurableAgentFunction(this.semanticModel, node);
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     private boolean isInsideWorkflowFunction(LinePosition position) {
@@ -316,6 +331,13 @@ public class AvailableNodesGenerator {
     }
 
     private void setDefaultNodes(boolean disableBallerinaAiNodes, boolean isInWorkflowFunction) {
+        if (this.inDurableAgentFunction) {
+            // Guided authoring: inside a durable agent, only the configuration nodes apply.
+            this.rootBuilder.stepIn(Category.Name.DURABLE_AGENT)
+                    .items(getDurableAgentNodes())
+                    .stepOut();
+            return;
+        }
         if (!isInWorkflowFunction) {
             this.rootBuilder.stepIn(Category.Name.AI)
                     .items(getAiNodes(disableBallerinaAiNodes))
@@ -446,6 +468,34 @@ public class AvailableNodesGenerator {
                 .items(List.of(agent)).build();
 
         return List.of(directLlmCategory, ragCategory, agentCategory);
+    }
+
+    private List<Item> getDurableAgentNodes() {
+        List<Item> nodes = new ArrayList<>();
+        record NodeSpec(String label, String description, NodeKind kind) { }
+        List<NodeSpec> specs = List.of(
+                new NodeSpec(Workflow.SET_MODEL_PROVIDER_LABEL, Workflow.SET_MODEL_PROVIDER_DESCRIPTION,
+                        NodeKind.DURABLE_AGENT_MODEL_PROVIDER),
+                new NodeSpec(Workflow.REGISTER_ACTIVITY_LABEL, Workflow.REGISTER_ACTIVITY_DESCRIPTION,
+                        NodeKind.DURABLE_AGENT_ADD_ACTIVITY),
+                new NodeSpec(Workflow.REGISTER_TOOL_LABEL, Workflow.REGISTER_TOOL_DESCRIPTION,
+                        NodeKind.DURABLE_AGENT_ADD_TOOL),
+                new NodeSpec(Workflow.REGISTER_HUMAN_TASK_LABEL, Workflow.REGISTER_HUMAN_TASK_DESCRIPTION,
+                        NodeKind.DURABLE_AGENT_HUMAN_TASK),
+                new NodeSpec(Workflow.RUN_DURABLE_AGENT_LABEL, Workflow.RUN_DURABLE_AGENT_DESCRIPTION,
+                        NodeKind.DURABLE_AGENT_RUN));
+        for (NodeSpec spec : specs) {
+            nodes.add(new AvailableNode(
+                    new Metadata.Builder<>(null)
+                            .label(spec.label())
+                            .description(spec.description())
+                            .build(),
+                    new Codedata.Builder<>(null)
+                            .node(spec.kind())
+                            .build(),
+                    true));
+        }
+        return nodes;
     }
 
     private List<Item> getWorkflowNodes(boolean isInWorkflowFunction) {

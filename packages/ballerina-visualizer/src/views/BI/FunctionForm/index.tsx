@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { FunctionNode, LineRange, NodeKind, NodeProperties, NodePropertyKey, Property, DIRECTORY_MAP, EVENT_TYPE, getPrimaryInputType, isTemplateType, RecordTypeField } from "@wso2/ballerina-core";
+import { CodeData, FunctionNode, LineRange, NodeKind, NodeProperties, NodePropertyKey, Property, DIRECTORY_MAP, EVENT_TYPE, getPrimaryInputType, isTemplateType, RecordTypeField } from "@wso2/ballerina-core";
 import { Button, Codicon, Typography, View, ViewContent } from "@wso2/ui-toolkit";
 import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
@@ -27,10 +27,21 @@ import { TitleBar } from "../../../components/TitleBar";
 import { TopNavigationBar } from "../../../components/TopNavigationBar";
 import { FormHeader } from "../../../components/FormHeader";
 import { convertConfig, convertNodePropertyToFormField, getImportsForProperty } from "../../../utils/bi";
-import { fetchOAuthConfigProperties } from "../AIChatAgent/utils";
+import { fetchOAuthConfigProperties, getNodeTemplate } from "../AIChatAgent/utils";
 import { BodyText, LoadingContainer, TopBar } from "../../styles";
 import { LoadingRing } from "../../../components/Loader";
 
+
+// Durable agents run their LLM calls through a module-level `ai:ModelProvider`. Creating a
+// durable agent ensures the shared WSO2 default provider exists (mirrors AIChatAgentWizard).
+const WSO2_MODEL_PROVIDER_CODEDATA: CodeData = {
+    node: "MODEL_PROVIDER",
+    org: "ballerina",
+    module: "ai",
+    packageName: "ai",
+    symbol: "getDefaultModelProvider",
+};
+const WSO2_MODEL_PROVIDER_VAR = "wso2ModelProvider";
 
 const FormContainer = styled.div`
     display: flex;
@@ -187,6 +198,7 @@ interface FunctionFormProps {
     isDataMapper?: boolean;
     isNpFunction?: boolean;
     isWorkflow?: boolean;
+    isDurableAgent?: boolean;
     isActivity?: boolean;
     isAutomation?: boolean;
     isAgentTool?: boolean;
@@ -195,7 +207,7 @@ interface FunctionFormProps {
 
 export function FunctionForm(props: FunctionFormProps) {
     const { rpcClient } = useRpcContext();
-    const { projectPath, functionName, filePath, isDataMapper, isNpFunction, isWorkflow, isActivity, isAutomation, isAgentTool, isPopup } = props;
+    const { projectPath, functionName, filePath, isDataMapper, isNpFunction, isWorkflow, isDurableAgent, isActivity, isAutomation, isAgentTool, isPopup } = props;
 
     const [functionFields, setFunctionFields] = useState<FormField[]>([]);
     const [functionNode, setFunctionNode] = useState<FunctionNode>(undefined);
@@ -258,6 +270,11 @@ export function FunctionForm(props: FunctionFormProps) {
             formType.current = 'Workflow';
             setTitleSubtitle('Build reusable workflow processes');
             setFormSubtitle('Define a workflow process with a strongly typed input payload');
+        } else if (isDurableAgent) {
+            nodeKind = 'DURABLE_AGENT';
+            formType.current = 'Durable Agent';
+            setTitleSubtitle('Build a durable AI agent backed by a workflow');
+            setFormSubtitle('Define a long-running AI agent with a strongly typed input payload');
         } else if (isActivity) {
             nodeKind = 'ACTIVITY';
             formType.current = 'Workflow Activity';
@@ -274,7 +291,7 @@ export function FunctionForm(props: FunctionFormProps) {
         } else {
             getFunctionNode(nodeKind);
         }
-    }, [isDataMapper, isNpFunction, isWorkflow, isActivity, isAutomation, isAgentTool, functionName]);
+    }, [isDataMapper, isNpFunction, isWorkflow, isDurableAgent, isActivity, isAutomation, isAgentTool, functionName]);
 
     useEffect(() => {
         let cancelled = false;
@@ -499,7 +516,7 @@ export function FunctionForm(props: FunctionFormProps) {
         // (Name, Description, Input Type). Hide Public (shareable workflows are not encouraged yet),
         // Return Type and Return Type Description. The return type defaults to `error?` (set by the
         // LS WorkflowBuilder) and can be edited later from the workflow function definition.
-        if (isWorkflow) {
+        if (isWorkflow || isDurableAgent) {
             if (flowNode.properties?.isPublic) {
                 flowNode.properties.isPublic.hidden = true;
             }
@@ -556,6 +573,8 @@ export function FunctionForm(props: FunctionFormProps) {
         // resulting in a 10-second timeout and incorrect source generation (e.g. adds `public`).
         if (isWorkflow) {
             flowNode = { ...flowNode, codedata: { ...flowNode.codedata, node: 'WORKFLOW' as NodeKind } };
+        } else if (isDurableAgent) {
+            flowNode = { ...flowNode, codedata: { ...flowNode.codedata, node: 'DURABLE_AGENT' as NodeKind } };
         } else if (isActivity) {
             flowNode = { ...flowNode, codedata: { ...flowNode.codedata, node: 'ACTIVITY' as NodeKind } };
         }
@@ -564,6 +583,30 @@ export function FunctionForm(props: FunctionFormProps) {
         setIsLoading(false);
         console.log("Existing Function Node: ", flowNode);
     }
+
+    // Ensure the shared WSO2 default model provider exists in the project and its
+    // Config.toml entry is written. Reuses an existing `wso2ModelProvider` variable if
+    // present (same behavior as AIChatAgentWizard). Failures are non-fatal: the agent
+    // function is already created and the provider can be added manually.
+    const ensureWso2ModelProvider = async () => {
+        try {
+            const existingModelProviders = await rpcClient.getBIDiagramRpcClient().searchNodes({
+                filePath: projectPath,
+                queryMap: { kind: "MODEL_PROVIDER" as NodeKind }
+            });
+            const existingProvider = existingModelProviders?.output?.find(
+                node => String(node.properties?.variable?.value) === WSO2_MODEL_PROVIDER_VAR
+            );
+            if (!existingProvider) {
+                const modelNodeTemplate = await getNodeTemplate(rpcClient, WSO2_MODEL_PROVIDER_CODEDATA, projectPath);
+                modelNodeTemplate.properties.variable.value = WSO2_MODEL_PROVIDER_VAR;
+                await rpcClient.getBIDiagramRpcClient().getSourceCode({ filePath: projectPath, flowNode: modelNodeTemplate });
+            }
+            await rpcClient.getAIAgentRpcClient().configureDefaultModelProvider("model");
+        } catch (error) {
+            console.error("Failed to ensure WSO2 default model provider:", error);
+        }
+    };
 
     const onSubmit = async (data: FormValues, formImports?: FormImports) => {
         console.log("Function Form Data: ", data);
@@ -746,6 +789,9 @@ export function FunctionForm(props: FunctionFormProps) {
         } else {
             const newArtifact = sourceCode.artifacts.find(res => res.isNew);
             if (newArtifact) {
+                if (isDurableAgent) {
+                    await ensureWso2ModelProvider();
+                }
                 if (isPopup) {
                     handleClosePopup(functionNodeCopy.properties.functionName.value as string);
                     return;
@@ -803,6 +849,8 @@ export function FunctionForm(props: FunctionFormProps) {
             return "Natural Function";
         } else if (isWorkflow) {
             return "Workflow";
+        } else if (isDurableAgent) {
+            return "Durable Agent";
         } else if (isActivity) {
             return "Workflow Activity";
         } else if (isAutomation || functionName === "main") {
@@ -819,7 +867,7 @@ export function FunctionForm(props: FunctionFormProps) {
                 location: {
                     view: null,
                     recentIdentifier: functionName,
-                    artifactType: isAgentTool ? DIRECTORY_MAP.AGENT_TOOL : isWorkflow ? DIRECTORY_MAP.WORKFLOW : isActivity ? DIRECTORY_MAP.ACTIVITY : DIRECTORY_MAP.FUNCTION
+                    artifactType: isAgentTool ? DIRECTORY_MAP.AGENT_TOOL : (isWorkflow || isDurableAgent) ? DIRECTORY_MAP.WORKFLOW : isActivity ? DIRECTORY_MAP.ACTIVITY : DIRECTORY_MAP.FUNCTION
                 },
                 isPopup: true
             });
