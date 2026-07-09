@@ -415,6 +415,10 @@ export class BiDiagramRpcManager implements BIDiagramAPI {
                 return { artifactType: DIRECTORY_MAP.NP_FUNCTION };
             case 'WORKFLOW':
                 return { artifactType: DIRECTORY_MAP.WORKFLOW };
+            // Durable agents are workflow-backed functions; they are published under the
+            // Workflows artifact category by the LS.
+            case 'DURABLE_AGENT':
+                return { artifactType: DIRECTORY_MAP.WORKFLOW };
             case 'ACTIVITY':
                 return { artifactType: DIRECTORY_MAP.ACTIVITY };
             // Add other cases as needed
