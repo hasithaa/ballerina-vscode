@@ -40,7 +40,6 @@ import io.ballerina.flowmodelgenerator.extension.request.GenActivityRequest;
 import io.ballerina.flowmodelgenerator.extension.request.GetAllDataRequest;
 import io.ballerina.flowmodelgenerator.extension.response.GenActivityResponse;
 import io.ballerina.flowmodelgenerator.extension.response.GetAllDataResponse;
-import io.ballerina.modelgenerator.commons.ModuleInfo;
 import io.ballerina.projects.Module;
 import org.ballerinalang.annotation.JavaSPIService;
 import org.ballerinalang.langserver.commons.service.spi.ExtendedLanguageServerService;
@@ -137,8 +136,7 @@ public class WorkflowManagerService implements ExtendedLanguageServerService {
                     throw new IllegalStateException(
                             "Failed to resolve the semantic model or module for the file: " + filePath);
                 }
-                ActivityGenerator activityGenerator = new ActivityGenerator(semanticModel.get(),
-                        ModuleInfo.from(module.get().descriptor()));
+                ActivityGenerator activityGenerator = new ActivityGenerator(semanticModel.get());
                 response.setTextEdits(activityGenerator.genActivity(request.flowNode(), request.activityName(),
                         request.activityParameters(), request.connection(), request.description(), filePath,
                         this.workspaceManager));
