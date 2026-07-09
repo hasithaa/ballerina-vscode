@@ -23,8 +23,6 @@ import com.google.gson.JsonElement;
 import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.compiler.api.symbols.SymbolKind;
-import io.ballerina.compiler.api.symbols.TypeSymbol;
-import io.ballerina.compiler.api.symbols.VariableSymbol;
 import io.ballerina.compiler.syntax.tree.SyntaxKind;
 import io.ballerina.flowmodelgenerator.core.model.FlowNode;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
@@ -36,7 +34,6 @@ import io.ballerina.flowmodelgenerator.core.utils.FileSystemUtils;
 import io.ballerina.flowmodelgenerator.core.utils.FlowNodeUtil;
 import io.ballerina.flowmodelgenerator.core.utils.ParamUtils;
 import io.ballerina.modelgenerator.commons.CommonUtils;
-import io.ballerina.modelgenerator.commons.ModuleInfo;
 import io.ballerina.modelgenerator.commons.ParameterData;
 import io.ballerina.projects.Document;
 import org.ballerinalang.langserver.commons.workspace.WorkspaceManager;
@@ -51,17 +48,15 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Generates {@code @workflow:Activity} functions that wrap a connection action call, following the
- * built-in activity pattern: the connection is the first parameter of the activity function and the
- * action is invoked on that parameter. Mirrors {@link AgentsGenerator#genTool} which generates agent
- * tools closing over the module-level connection instead.
+ * Generates {@code @workflow:Activity} functions that wrap a connection action call. The connection is
+ * a module-level global variable (created via the connection wizard) referenced by name in the activity
+ * body; it is not a parameter of the activity function. Mirrors {@link AgentsGenerator#genTool}, which
+ * generates agent tools closing over the module-level connection in the same way.
  *
  * @since 1.5.0
  */
 public class ActivityGenerator {
 
-    public static final String CONNECTION_PARAM_NAME = "connection";
-    private static final String CONNECTION_PARAM_DOC = "Connection to invoke the action on";
     // Short, conventional name for the result variable inside the generated activity body.
     private static final String RESULT_VARIABLE = "result";
     // Fallback databinding type when the action's return type is ambiguous (see normalizeReturnType).
@@ -70,12 +65,10 @@ public class ActivityGenerator {
 
     private final Gson gson;
     private final SemanticModel semanticModel;
-    private final ModuleInfo moduleInfo;
 
-    public ActivityGenerator(SemanticModel semanticModel, ModuleInfo moduleInfo) {
+    public ActivityGenerator(SemanticModel semanticModel) {
         this.gson = new Gson();
         this.semanticModel = semanticModel;
-        this.moduleInfo = moduleInfo;
     }
 
     /**
@@ -86,7 +79,7 @@ public class ActivityGenerator {
      * @param activityName       name of the activity function to generate
      * @param activityParameters activity function parameters property node (REPEATABLE_PROPERTY)
      * @param connectionName     name of the module-level connection variable the action was selected from;
-     *                           used only to resolve the connection parameter type
+     *                           referenced by name in the generated activity body
      * @param description        description of the activity (emitted as the doc comment)
      * @param filePath           path of the file to add the activity function to
      * @param workspaceManager   the workspace manager
@@ -113,14 +106,14 @@ public class ActivityGenerator {
             pathParams = collectPathParams(flowNode, ignoredKeys);
         }
 
-        // Documentation: description, connection parameter, activity inputs, return value
+        // The connection is a module-level global referenced by name in the body (not a parameter);
+        // validate it exists so a stale/deleted connection surfaces a clear error.
+        validateConnectionExists(connectionName);
+
+        // Documentation: description, activity inputs, return value
         boolean hasDescription = AgentsGenerator.genDescription(description, sourceBuilder);
-        if (hasDescription) {
-            sourceBuilder.token().parameterDoc(CONNECTION_PARAM_NAME, CONNECTION_PARAM_DOC);
-        }
-        List<String> paramList = new ArrayList<>();
-        paramList.add(resolveConnectionType(connectionName) + " " + CONNECTION_PARAM_NAME);
-        paramList.addAll(AgentsGenerator.populateToolParams(activityParams, hasDescription, sourceBuilder));
+        List<String> paramList = new ArrayList<>(
+                AgentsGenerator.populateToolParams(activityParams, hasDescription, sourceBuilder));
 
         Optional<Property> optReturnType = sourceBuilder.getProperty(Property.TYPE_KEY);
         String returnType = "";
@@ -174,7 +167,7 @@ public class ActivityGenerator {
 
         if (nodeKind == NodeKind.REMOTE_ACTION_CALL) {
             sourceBuilder.token()
-                    .name(CONNECTION_PARAM_NAME)
+                    .name(connectionName)
                     .keyword(SyntaxKind.RIGHT_ARROW_TOKEN)
                     .name(flowNode.metadata().label())
                     .stepOut()
@@ -183,7 +176,7 @@ public class ActivityGenerator {
             String resourcePath = resolveResourcePath(flowNode, pathParams);
             ignoredKeys.addAll(pathParams);
             sourceBuilder.token()
-                    .name(CONNECTION_PARAM_NAME)
+                    .name(connectionName)
                     .keyword(SyntaxKind.RIGHT_ARROW_TOKEN)
                     .resourcePath(resourcePath)
                     .keyword(SyntaxKind.DOT_TOKEN)
@@ -232,17 +225,17 @@ public class ActivityGenerator {
     }
 
     /**
-     * Resolves the type of the module-level connection variable (e.g. {@code http:Client}) to use as
-     * the type of the activity's connection parameter.
+     * Validates that the given connection name resolves to a module-level variable. The generated
+     * activity body references the connection by name, so a missing connection must fail with a clear
+     * error rather than producing a body that references an undefined symbol.
      */
-    private String resolveConnectionType(String connectionName) {
+    private void validateConnectionExists(String connectionName) {
         for (Symbol symbol : semanticModel.moduleSymbols()) {
             if (symbol.kind() != SymbolKind.VARIABLE) {
                 continue;
             }
             if (symbol.getName().orElse("").equals(connectionName)) {
-                TypeSymbol typeSymbol = ((VariableSymbol) symbol).typeDescriptor();
-                return CommonUtils.getTypeSignature(semanticModel, typeSymbol, true, moduleInfo);
+                return;
             }
         }
         throw new IllegalStateException("Connection '" + connectionName + "' is not found in the module");
