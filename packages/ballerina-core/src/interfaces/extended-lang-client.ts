@@ -1023,6 +1023,8 @@ export interface GenActivityRequest {
     description: string;
     connection: string;
     activityParameters?: ToolParameters;
+    /** When true, the wrapped action call is generated with no arguments (action has non-data types). */
+    emptyActionArgs?: boolean;
 }
 
 export interface GenActivityResponse {

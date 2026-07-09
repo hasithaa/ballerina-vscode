@@ -81,6 +81,19 @@ const ImplementationBadge = styled.div`
     white-space: nowrap;
 `;
 
+const NoticeBanner = styled.div`
+    display: flex;
+    gap: 8px;
+    background-color: var(--vscode-inputValidation-warningBackground);
+    border: 1px solid var(--vscode-inputValidation-warningBorder);
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin: 8px 12px 0;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--vscode-foreground);
+`;
+
 enum PanelView {
     CONNECTION_LIST = "CONNECTION_LIST",
     ACTIVITY_FORM = "ACTIVITY_FORM",
@@ -139,11 +152,15 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
     const [recordTypeFields, setRecordTypeFields] = useState<RecordTypeField[]>([]);
     const [loading, setLoading] = useState<boolean>(false);
     const [saving, setSaving] = useState<boolean>(false);
+    // True when the selected action has non-data (non-anydata) params/return; the form then shows a
+    // notice and the activity is generated as a stub with an empty action call.
+    const [showNonDataNotice, setShowNonDataNotice] = useState<boolean>(false);
 
     const flowNodeRef = useRef<FlowNode>(null);
     const selectedNodeRef = useRef<AvailableNode>(undefined);
     const parameterFieldsRef = useRef<ToolParameterItem[]>([]);
     const isSelectingNodeRef = useRef<boolean>(false);
+    const isDataCompatibleRef = useRef<boolean>(true);
 
     // Suppress undefined-symbol diagnostics for expressions referencing activity input names
     const customDiagnosticFilter = useCallback((diagnostics: Diagnostic[]) => {
@@ -190,6 +207,9 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
             const response = await rpcClient.getBIDiagramRpcClient().getAvailableNodes({
                 position: { line: 0, offset: 0 },
                 filePath: fileName,
+                // Ask the LS to tag each action with `agentToolCompatible` (all params + return are
+                // anydata) so we can detect non-data actions when one is selected.
+                queryMap: { checkAgentToolCompatibility: "true" },
             });
             if (!response.categories) {
                 console.error(">>> Error getting available nodes", response);
@@ -279,6 +299,14 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
             flowNodeRef.current = nodeTemplate.flowNode;
             selectedNodeRef.current = metadata.node;
 
+            // An action is data-compatible when all its params and return type are anydata (the same
+            // criterion the agent tool flow uses). Non-data actions can't be wrapped 1:1, so we show a
+            // notice and generate a stub with an empty action call for the user to complete.
+            const compatible =
+                String((metadata?.node as AvailableNode)?.codedata?.data?.agentToolCompatible) !== "false";
+            isDataCompatibleRef.current = compatible;
+            setShowNonDataNotice(!compatible);
+
             const nodeParameterFields = nodeTemplate.flowNode.properties
                 ? convertConfig(nodeTemplate.flowNode.properties)
                 : [];
@@ -299,19 +327,28 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 .replace(/```[\s\S]*?```/g, "")
                 .trim();
 
-            setRecordTypeFields(
-                nodeTemplate.flowNode.properties ? extractRecordTypeFields(nodeTemplate.flowNode.properties) : []
+            const baseFields = INITIAL_FIELDS.map((field) =>
+                field.key === "description" ? { ...field, value: templateDescription } : field
             );
-            setFields([
-                ...INITIAL_FIELDS.map((field) =>
-                    field.key === "description" ? { ...field, value: templateDescription } : field
-                ),
-                ...activityInputFields,
-                ...nodeParameterFields.map((field) => ({
-                    ...field,
-                    value: typeof field.value === "string" ? field.value.replace(/^\$/, "") : field.value,
-                })),
-            ]);
+            // Non-data actions: show only name/description — the action call is generated empty and the
+            // user fills in the logic, so the input/mapping fields would not map cleanly.
+            setRecordTypeFields(
+                compatible && nodeTemplate.flowNode.properties
+                    ? extractRecordTypeFields(nodeTemplate.flowNode.properties)
+                    : []
+            );
+            setFields(
+                compatible
+                    ? [
+                          ...baseFields,
+                          ...activityInputFields,
+                          ...nodeParameterFields.map((field) => ({
+                              ...field,
+                              value: typeof field.value === "string" ? field.value.replace(/^\$/, "") : field.value,
+                          })),
+                      ]
+                    : baseFields
+            );
             setPanelView(PanelView.ACTIVITY_FORM);
         } catch (error) {
             console.error(">>> Error fetching node template", error);
@@ -404,6 +441,8 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 description: data["description"] || "",
                 connection: selectedNodeRef.current?.codedata?.parentSymbol || "",
                 activityParameters,
+                // Non-data actions are generated as a stub with an empty action call.
+                emptyActionArgs: !isDataCompatibleRef.current,
             });
             if (response?.errorMsg) {
                 console.error(">>> Error creating activity from connection", response);
@@ -441,6 +480,12 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                     searchPlaceholder={"Search connections"}
                     panelBodySx={{ height: "calc(100vh - 140px)" }}
                 />
+            )}
+            {!saving && panelView === PanelView.ACTIVITY_FORM && showNonDataNotice && (
+                <NoticeBanner>
+                    This action contains non-data types. The activity is created with an empty action call —
+                    please edit the activity function logic to handle those types.
+                </NoticeBanner>
             )}
             {!saving && panelView === PanelView.ACTIVITY_FORM && (
                 <ArtifactForm

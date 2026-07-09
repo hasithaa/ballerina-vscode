@@ -69,7 +69,7 @@ public class GenActivityTest extends AbstractLSTest {
         String filePath = sourceDir.resolve(testConfig.source()).toAbsolutePath().toString();
         GenActivityRequest request = new GenActivityRequest(filePath, testConfig.diagram(),
                 testConfig.activityName(), testConfig.activityParameters(), testConfig.activityDescription(),
-                testConfig.connection());
+                testConfig.connection(), false);
         JsonObject jsonMap = getResponseAndCloseFile(request, testConfig.source()).getAsJsonObject("textEdits");
 
         Map<String, List<TextEdit>> actualTextEdits = gson.fromJson(jsonMap, textEditListType);
@@ -114,6 +114,21 @@ public class GenActivityTest extends AbstractLSTest {
         assertGracefulError(response, "unresolvable connection");
     }
 
+    @Test
+    public void testEmptyActionArgs() throws IOException {
+        Path configJsonPath = configDir.resolve("gen_activity_remote_action.json");
+        TestConfig base = gson.fromJson(Files.newBufferedReader(configJsonPath), TestConfig.class);
+        String filePath = sourceDir.resolve(base.source()).toAbsolutePath().toString();
+        GenActivityRequest request = new GenActivityRequest(filePath, base.diagram(), base.activityName(),
+                base.activityParameters(), base.activityDescription(), base.connection(), true);
+
+        JsonObject jsonMap = getResponseAndCloseFile(request, base.source()).getAsJsonObject("textEdits");
+        String generated = jsonMap.toString();
+        // The action call is emitted with no arguments (a stub the user completes).
+        Assert.assertTrue(generated.contains("currencyClient->get()"),
+                "Expected an empty-argument action call, got: " + generated);
+    }
+
     private JsonObject sendMutatedRequest(java.util.function.Consumer<JsonObject> diagramMutator,
                                           String connectionOverride) throws IOException {
         Path configJsonPath = configDir.resolve("gen_activity_remote_action.json");
@@ -124,7 +139,7 @@ public class GenActivityTest extends AbstractLSTest {
         String filePath = sourceDir.resolve(base.source()).toAbsolutePath().toString();
         GenActivityRequest request = new GenActivityRequest(filePath, diagram, base.activityName(),
                 base.activityParameters(), base.activityDescription(),
-                connectionOverride != null ? connectionOverride : base.connection());
+                connectionOverride != null ? connectionOverride : base.connection(), false);
 
         // The shared getResponse helper fails the test when the response carries an errorMsg, so the
         // endpoint is invoked directly here to assert the graceful-error contract on the raw response.
