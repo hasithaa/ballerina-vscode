@@ -1211,6 +1211,30 @@ public class AiUtils {
         return new ReturnTypeInfo("undeterminable", signature);
     }
 
+    /**
+     * Returns the names of the function's parameters whose type is not a subtype of {@code anydata}
+     * (skipping the typedesc type-infer parameter). The create-activity-from-connection form surfaces
+     * these as {@code anydata} with a warning, since a workflow activity parameter must be serializable.
+     */
+    public static List<String> getNonAnydataParams(FunctionTypeSymbol functionTypeSymbol,
+                                                   SemanticModel semanticModel) {
+        List<String> nonDataParams = new ArrayList<>();
+        Optional<List<ParameterSymbol>> optParams = functionTypeSymbol.params();
+        if (optParams.isEmpty()) {
+            return nonDataParams;
+        }
+        TypeSymbol anydata = semanticModel.types().ANYDATA;
+        for (ParameterSymbol param : optParams.get()) {
+            if (CommonUtils.getRawType(param.typeDescriptor()).typeKind() == TypeDescKind.TYPEDESC) {
+                continue;
+            }
+            if (!CommonUtils.subTypeOf(param.typeDescriptor(), anydata)) {
+                param.getName().ifPresent(nonDataParams::add);
+            }
+        }
+        return nonDataParams;
+    }
+
     // Returns the non-error/non-nil part of a (possibly union) return type, or null when it carries
     // no data (e.g. error?).
     private static TypeSymbol nonErrorReturnType(TypeSymbol returnType) {

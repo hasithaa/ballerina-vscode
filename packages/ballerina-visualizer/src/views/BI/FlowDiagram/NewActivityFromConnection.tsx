@@ -152,6 +152,8 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
     // Set when the action's return type can't be determined (contains object/stream/etc.); the form
     // then shows a warning and lets the user pick the return type.
     const [showReturnTypeWarning, setShowReturnTypeWarning] = useState<boolean>(false);
+    // Labels of parameters whose type isn't anydata (surfaced as anydata with a warning).
+    const [nonDataParamNames, setNonDataParamNames] = useState<string[]>([]);
 
     const flowNodeRef = useRef<FlowNode>(null);
     const selectedNodeRef = useRef<AvailableNode>(undefined);
@@ -300,6 +302,12 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
             const actionParams: { key: string; type: string }[] = [];
             const paramFields: FormField[] = [];
             let returnField: FormField | undefined;
+            // Parameters whose type isn't anydata (from the LS signal): a workflow activity parameter
+            // must be serializable, so we surface them as `anydata` and warn the user to fix the
+            // generated activity afterwards.
+            const nonDataParams: string[] = ((metadata?.node as AvailableNode)?.codedata?.data
+                ?.nonDataParams as string[]) || [];
+            const nonDataLabels: string[] = [];
             for (const field of rawFields) {
                 // Internal properties (connection/checkError/variable/resourcePath) and the type-infer
                 // parameter are not shown; they are kept in the flow node for source generation.
@@ -314,17 +322,29 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 // Action parameter: a normal expression field the user fills with workflow-local values.
                 // Use the canonical EXPRESSION type (e.g. http:RequestMessage) for the activity parameter
                 // rather than the editor type (e.g. mime:Entity[]), which may need an extra import.
-                const paramType =
-                    field.types?.find((t) => t.fieldType === "EXPRESSION")?.ballerinaType ||
-                    primary?.ballerinaType ||
-                    "";
+                const isNonData = nonDataParams.includes(field.key);
+                const paramType = isNonData
+                    ? "anydata"
+                    : field.types?.find((t) => t.fieldType === "EXPRESSION")?.ballerinaType ||
+                      primary?.ballerinaType ||
+                      "";
+                if (isNonData) {
+                    nonDataLabels.push(field.label || field.key);
+                }
                 paramFields.push({
                     ...field,
                     value: typeof field.value === "string" ? field.value.replace(/^\$/, "") : field.value,
+                    documentation:
+                        (field.documentation || "") +
+                        (isNonData
+                            ? " ⚠ Not a data type — set to anydata; adjust this parameter's type in the" +
+                              " generated activity afterwards."
+                            : ""),
                 });
                 actionParams.push({ key: field.key, type: paramType });
             }
             actionParamsRef.current = actionParams;
+            setNonDataParamNames(nonDataLabels);
 
             if (returnField) {
                 if (returnTypeInfo?.kind === "anydata") {
@@ -506,6 +526,13 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 <NoticeBanner>
                     We cannot determine the return type of this action (it contains object/stream types). Select the
                     return type below; the generated <code>return</code> statement may need adjusting to match it.
+                </NoticeBanner>
+            )}
+            {!saving && panelView === PanelView.ACTIVITY_FORM && nonDataParamNames.length > 0 && (
+                <NoticeBanner>
+                    {nonDataParamNames.join(", ")} {nonDataParamNames.length > 1 ? "are" : "is"} not a data type and
+                    {nonDataParamNames.length > 1 ? " have" : " has"} been set to <code>anydata</code>. Adjust the
+                    parameter type(s) in the generated activity afterwards.
                 </NoticeBanner>
             )}
             {!saving && panelView === PanelView.ACTIVITY_FORM && (
