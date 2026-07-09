@@ -1045,6 +1045,62 @@ public class CodeAnalyzer extends NodeVisitor {
             nodeBuilder.metadata().addData("model",
                     new ToolData(modelArg.toString().trim(), null, "", null));
         }
+
+        // The agent's AI tools (from this call's own `tools = [...]` argument).
+        List<ToolData> toolData = new ArrayList<>();
+        for (FunctionArgumentNode arg : callNode.arguments()) {
+            if (arg instanceof NamedArgumentNode namedArg
+                    && DurableAgentRunBuilder.TOOLS_KEY.equals(namedArg.argumentName().name().text())
+                    && namedArg.expression() instanceof ListConstructorExpressionNode toolsList) {
+                for (Node element : toolsList.expressions()) {
+                    toolData.add(new ToolData(element.toSourceCode().trim(), null, "", null));
+                }
+            }
+        }
+        nodeBuilder.metadata().addData("tools", toolData);
+
+        // Activities and human tasks are registered on the context anywhere in the enclosing
+        // agent function; surface them all on this node regardless of code flow.
+        collectDurableAgentCapabilities(callNode);
+    }
+
+    // Scans the enclosing durable-agent function body for registerActivities/registerHumanTask
+    // calls and attaches their names to the run node's metadata for the agent-box visualization.
+    private void collectDurableAgentCapabilities(MethodCallExpressionNode runCallNode) {
+        NonTerminalNode parent = runCallNode.parent();
+        while (parent != null && !(parent instanceof FunctionDefinitionNode)) {
+            parent = parent.parent();
+        }
+        if (parent == null) {
+            return;
+        }
+        List<ToolData> activities = new ArrayList<>();
+        List<ToolData> humanTasks = new ArrayList<>();
+        ((FunctionDefinitionNode) parent).functionBody().accept(new NodeVisitor() {
+            @Override
+            public void visit(MethodCallExpressionNode methodCall) {
+                String methodName = getIdentifierName(methodCall.methodName());
+                SeparatedNodeList<FunctionArgumentNode> args = methodCall.arguments();
+                if (REGISTER_ACTIVITIES_METHOD_NAME.equals(methodName)
+                        && !args.isEmpty() && args.get(0) instanceof PositionalArgumentNode posArg
+                        && posArg.expression() instanceof ListConstructorExpressionNode activityList) {
+                    for (Node element : activityList.expressions()) {
+                        activities.add(new ToolData(element.toSourceCode().trim(), null, "", "activity"));
+                    }
+                } else if (REGISTER_HUMAN_TASK_METHOD_NAME.equals(methodName)
+                        && !args.isEmpty() && args.get(0) instanceof PositionalArgumentNode taskArg
+                        && taskArg.expression().kind() == SyntaxKind.STRING_LITERAL) {
+                    String raw = taskArg.expression().toSourceCode().trim();
+                    if (raw.length() >= 2 && raw.startsWith("\"") && raw.endsWith("\"")) {
+                        humanTasks.add(new ToolData(raw.substring(1, raw.length() - 1), null, "", "humanTask"));
+                    }
+                }
+                methodCall.arguments().forEach(arg -> arg.accept(this));
+                methodCall.expression().accept(this);
+            }
+        });
+        nodeBuilder.metadata().addData("activities", activities);
+        nodeBuilder.metadata().addData("humanTasks", humanTasks);
     }
 
     /**
@@ -3317,11 +3373,37 @@ public class CodeAnalyzer extends NodeVisitor {
 
     @Override
     public void visit(ExpressionStatementNode expressionStatementNode) {
+        // Durable-agent capability registrations are represented on the Run Durable Agent
+        // node (as attached activities/human tasks) rather than as standalone flow nodes.
+        if (isDurableAgentConfigStatement(expressionStatementNode.expression())) {
+            return;
+        }
         expressionStatementNode.expression().accept(this);
         if (isNodeUnidentified()) {
             handleExpressionNode(expressionStatementNode);
         }
         endNode(expressionStatementNode);
+    }
+
+    // True for `check agentContext.registerActivities(...)` / `registerHumanTask(...)` statements
+    // on the workflow AgentContext; these are visualized on the Run Durable Agent node instead.
+    private boolean isDurableAgentConfigStatement(ExpressionNode expression) {
+        ExpressionNode unwrapped = expression;
+        if (unwrapped.kind() == SyntaxKind.CHECK_EXPRESSION || unwrapped.kind() == SyntaxKind.CHECK_ACTION) {
+            unwrapped = ((CheckExpressionNode) unwrapped).expression();
+        }
+        if (!(unwrapped instanceof MethodCallExpressionNode methodCall)) {
+            return false;
+        }
+        String methodName = getIdentifierName(methodCall.methodName());
+        if (!REGISTER_ACTIVITIES_METHOD_NAME.equals(methodName)
+                && !REGISTER_HUMAN_TASK_METHOD_NAME.equals(methodName)) {
+            return false;
+        }
+        Optional<ClassSymbol> classSymbol = getClassSymbol(methodCall.expression());
+        return classSymbol.isPresent()
+                && AGENT_CONTEXT_CLASS_NAME.equals(classSymbol.get().getName().orElse(""))
+                && isWorkflowModule(classSymbol.get().getModule());
     }
 
     @Override

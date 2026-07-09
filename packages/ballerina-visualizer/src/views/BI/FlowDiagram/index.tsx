@@ -2890,7 +2890,83 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     };
 
     // AI Agent callback handlers
+    // Adds a workflow activity to the durable agent: the registerActivities statement is
+    // inserted BEFORE the runDurableAgent call (capabilities must be registered before the
+    // agent starts), picked from the same activity list the workflow Call Activity uses.
+    const handleOnAddDurableActivity = async (runNode: FlowNode) => {
+        const insertBefore = {
+            startLine: runNode.codedata.lineRange.startLine,
+            endLine: runNode.codedata.lineRange.startLine,
+        };
+        targetRef.current = insertBefore as any;
+        setTargetLineRange(insertBefore as any);
+        durableAgentActivityListRef.current = true;
+        setShowProgressIndicator(true);
+        rpcClient
+            .getBIDiagramRpcClient()
+            .search({
+                position: { startLine: insertBefore.startLine, endLine: insertBefore.endLine },
+                filePath: model?.fileName,
+                queryMap: { excludeBuiltins: "true", nodeKind: "DURABLE_AGENT_ADD_ACTIVITY" },
+                searchKind: "ACTIVITY_CALL",
+            })
+            .then((response) => {
+                const panelCategories = convertFunctionCategoriesToSidePanelCategories(
+                    response.categories as Category[],
+                    FUNCTION_TYPE.REGULAR
+                );
+                const currentIntegrationCategory = findCurrentIntegrationCategory(panelCategories);
+                if (currentIntegrationCategory && !currentIntegrationCategory.items.length) {
+                    currentIntegrationCategory.description = "No activities defined. Click below to create a new activity.";
+                }
+                setCategories(panelCategories);
+                setSidePanelView(SidePanelView.ACTIVITY_LIST);
+                setShowSidePanel(true);
+            })
+            .finally(() => {
+                setShowProgressIndicator(false);
+            });
+    };
+
+    // Adds a human task to the durable agent, inserted BEFORE the runDurableAgent call.
+    const handleOnAddDurableHumanTask = async (runNode: FlowNode) => {
+        const insertBefore = {
+            startLine: runNode.codedata.lineRange.startLine,
+            endLine: runNode.codedata.lineRange.startLine,
+        };
+        targetRef.current = insertBefore as any;
+        setTargetLineRange(insertBefore as any);
+        setShowProgressIndicator(true);
+        rpcClient
+            .getBIDiagramRpcClient()
+            .getNodeTemplate({
+                position: insertBefore.startLine,
+                filePath: model?.fileName,
+                id: { node: "DURABLE_AGENT_HUMAN_TASK" },
+            })
+            .then((response) => {
+                selectedNodeRef.current = undefined;
+                nodeTemplateRef.current = response.flowNode;
+                showEditForm.current = false;
+                setSidePanelView(SidePanelView.FORM);
+                setShowSidePanel(true);
+            })
+            .finally(() => {
+                setShowProgressIndicator(false);
+            });
+    };
+
     const handleOnEditAgentModel = async (agentCallNode: FlowNode) => {
+        // The durable agent run node holds its own `model` property; configure it directly.
+        if (agentCallNode.codedata?.node === "DURABLE_AGENT_RUN") {
+            selectedNodeRef.current = agentCallNode;
+            showEditForm.current = true;
+            setSelectedNodeId(agentCallNode.id);
+            setSelectedConnectionKind('MODEL_PROVIDER');
+            setSidePanelView(SidePanelView.CONNECTION_CONFIG);
+            setShowSidePanel(true);
+            return;
+        }
         const agentNode = await findAgentNodeFromAgentCallNode(agentCallNode, rpcClient);
         if (!agentNode) {
             console.error(`Agent node not found`, agentCallNode);
@@ -3337,6 +3413,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             agentNode: {
                 onModelSelect: handleOnEditAgentModel,
                 onAddTool: handleOnAddTool,
+                onAddActivity: handleOnAddDurableActivity,
+                onAddHumanTask: handleOnAddDurableHumanTask,
                 onAddMcpServer: handleOnAddMcpServer,
                 onSelectTool: handleOnSelectTool,
                 onSelectMcpToolkit: handleOnSelectMcpToolkit,

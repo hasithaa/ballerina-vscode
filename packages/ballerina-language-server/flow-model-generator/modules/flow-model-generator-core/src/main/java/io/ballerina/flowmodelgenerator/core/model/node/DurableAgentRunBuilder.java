@@ -264,6 +264,9 @@ public class DurableAgentRunBuilder extends CallBuilder {
                     .stepOut()
                 .value(value)
                 .editable(true)
+                // The model is configured through the agent box's attached model-provider
+                // circle, not the run form; keep the property so it round-trips on save.
+                .hidden()
                 .stepOut()
                 .addProperty(MODEL_KEY);
     }

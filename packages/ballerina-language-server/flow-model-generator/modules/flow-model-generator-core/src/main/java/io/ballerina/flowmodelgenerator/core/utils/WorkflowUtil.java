@@ -45,6 +45,7 @@ import io.ballerina.tools.text.TextRange;
 
 import java.util.List;
 import java.util.Map;
+import java.nio.file.Path;
 import java.util.Optional;
 
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.ACTIVITY;
@@ -155,10 +156,25 @@ public class WorkflowUtil {
      * @param sourceBuilder the source builder carrying the flow node's line range
      * @return the enclosing durable agent function, or null when not found
      */
+    // The request file path may be the project directory (e.g. connection-config saves pass
+    // the project root); resolve the actual source file from the node's line range.
+    private static Path resolveSourceFile(SourceBuilder sourceBuilder) {
+        Path filePath = sourceBuilder.filePath;
+        if (filePath.toString().endsWith(".bal")) {
+            return filePath;
+        }
+        LineRange lineRange = sourceBuilder.flowNode.codedata().lineRange();
+        if (lineRange != null && lineRange.fileName() != null) {
+            return filePath.resolve(lineRange.fileName());
+        }
+        return filePath;
+    }
+
     public static FunctionDefinitionNode findEnclosingDurableAgentFunction(SourceBuilder sourceBuilder) {
-        Document document = FileSystemUtils.getDocument(sourceBuilder.workspaceManager, sourceBuilder.filePath);
+        Path sourceFile = resolveSourceFile(sourceBuilder);
+        Document document = FileSystemUtils.getDocument(sourceBuilder.workspaceManager, sourceFile);
         SemanticModel semanticModel = FileSystemUtils.getSemanticModel(sourceBuilder.workspaceManager,
-                sourceBuilder.filePath);
+                sourceFile);
         LineRange lineRange = sourceBuilder.flowNode.codedata().lineRange();
         if (lineRange == null) {
             return null;
@@ -187,8 +203,9 @@ public class WorkflowUtil {
      * @return the agent context parameter name
      */
     public static String resolveAgentContextParamName(SourceBuilder sourceBuilder) {
+        Path sourceFile = resolveSourceFile(sourceBuilder);
         try {
-            sourceBuilder.workspaceManager.loadProject(sourceBuilder.filePath);
+            sourceBuilder.workspaceManager.loadProject(sourceFile);
         } catch (Exception e) {
             return Constants.Workflow.DEFAULT_AGENT_CTX_PARAM_NAME;
         }
@@ -197,7 +214,7 @@ public class WorkflowUtil {
             return Constants.Workflow.DEFAULT_AGENT_CTX_PARAM_NAME;
         }
         SemanticModel semanticModel = FileSystemUtils.getSemanticModel(sourceBuilder.workspaceManager,
-                sourceBuilder.filePath);
+                sourceFile);
         for (io.ballerina.compiler.syntax.tree.ParameterNode parameter
                 : agentFunction.functionSignature().parameters()) {
             Optional<Symbol> symbol = semanticModel.symbol(parameter);

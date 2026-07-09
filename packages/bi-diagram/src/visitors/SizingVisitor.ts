@@ -321,10 +321,26 @@ export class SizingVisitor implements BaseVisitor {
     endVisitDurableAgentRun(node: FlowNode, parent?: FlowNode): void {
         if (!this.validateNode(node)) return;
         const halfNodeWidth = NODE_WIDTH / 2;
-        // Fixed-height agent box (header + role + instructions rows) without the
-        // right-side model circle or tools column of the AI agent node.
-        const containerHeight = NODE_HEIGHT * 3;
-        this.setNodeSize(node, halfNodeWidth, halfNodeWidth, containerHeight);
+        const containerLeftWidth = halfNodeWidth;
+        // Reserve right-side space for the model circle and capability circles column.
+        const containerRightWidth = halfNodeWidth + NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT + LABEL_WIDTH;
+
+        // Calculate node height based on the number of capability circles
+        // (AI tools, activities and human tasks) rendered on the right side.
+        const nodeMetadata = node.metadata.data as NodeMetadata & {
+            activities?: unknown[];
+            humanTasks?: unknown[];
+        };
+        const numberOfCircles =
+            (nodeMetadata?.tools?.length || 0) +
+            (nodeMetadata?.activities?.length || 0) +
+            (nodeMetadata?.humanTasks?.length || 0);
+        let containerHeight =
+            NODE_HEIGHT + AGENT_NODE_TOOL_SECTION_GAP + AGENT_NODE_ADD_TOOL_BUTTON_WIDTH + AGENT_NODE_TOOL_GAP * 2;
+        if (numberOfCircles > 0) {
+            containerHeight += numberOfCircles * (NODE_HEIGHT + AGENT_NODE_TOOL_GAP);
+        }
+        this.setNodeSize(node, containerLeftWidth, containerRightWidth, containerHeight);
     }
 
     endVisitEmpty(node: FlowNode, parent?: FlowNode): void {

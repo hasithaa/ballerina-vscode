@@ -174,6 +174,10 @@ export const findFlowNode = async (
 };
 
 export const findAgentNodeFromAgentCallNode = async (agentCallNode: FlowNode, rpcClient: BallerinaRpcClient) => {
+    // A durable agent run call carries its model/tools on its own properties — it IS the agent node.
+    if (agentCallNode?.codedata?.node === "DURABLE_AGENT_RUN") {
+        return agentCallNode;
+    }
     // Validate input node type
     if (!agentCallNode || agentCallNode.codedata?.node !== "AGENT_CALL") {
         return null;
@@ -220,7 +224,9 @@ export const findAgentNodeFromAgentCallNode = async (agentCallNode: FlowNode, rp
 };
 
 export const removeToolFromAgentNode = async (agentNode: FlowNode, toolName: string) => {
-    if (!agentNode || agentNode.codedata?.node !== "AGENT") return null;
+    if (!agentNode || (agentNode.codedata?.node !== "AGENT" && agentNode.codedata?.node !== "DURABLE_AGENT_RUN")) {
+        return null;
+    }
     // clone the node to avoid modifying the original
     const updatedAgentNode = cloneDeep(agentNode);
     let toolsValue = updatedAgentNode.properties.tools.value;
@@ -252,7 +258,9 @@ export const removeToolFromAgentNode = async (agentNode: FlowNode, toolName: str
 };
 
 export const addToolToAgentNode = async (agentNode: FlowNode, toolName: string) => {
-    if (!agentNode || agentNode.codedata?.node !== "AGENT") return null;
+    if (!agentNode || (agentNode.codedata?.node !== "AGENT" && agentNode.codedata?.node !== "DURABLE_AGENT_RUN")) {
+        return null;
+    }
     // clone the node to avoid modifying the original
     const updatedAgentNode = cloneDeep(agentNode);
     let toolsValue = updatedAgentNode.properties.tools.value;
@@ -307,7 +315,9 @@ export const updateMcpServerToAgentNode = async (
     toolConfig: McpServerConfig,
     originalToolName: string
 ) => {
-    if (!agentNode || agentNode.codedata?.node !== "AGENT") return null;
+    if (!agentNode || (agentNode.codedata?.node !== "AGENT" && agentNode.codedata?.node !== "DURABLE_AGENT_RUN")) {
+        return null;
+    }
 
     const updatedAgentNode = cloneDeep(agentNode);
     let toolsValue = updatedAgentNode.properties.tools.value;
@@ -374,7 +384,9 @@ export const updateMcpServerToAgentNode = async (
 };
 
 export const addMcpServerToAgentNode = async (agentNode: FlowNode, toolConfig: McpServerConfig) => {
-    if (!agentNode || agentNode.codedata?.node !== "AGENT") return null;
+    if (!agentNode || (agentNode.codedata?.node !== "AGENT" && agentNode.codedata?.node !== "DURABLE_AGENT_RUN")) {
+        return null;
+    }
     // clone the node to avoid modifying the original
     const updatedAgentNode = cloneDeep(agentNode);
     let toolsValue = updatedAgentNode.properties.tools.value;
@@ -425,7 +437,9 @@ export const removeMcpServerFromAgentNode = (
     agentNode: FlowNode,
     toolkitNameToRemove: string
 ) => {
-    if (!agentNode || agentNode.codedata?.node !== "AGENT") return null;
+    if (!agentNode || (agentNode.codedata?.node !== "AGENT" && agentNode.codedata?.node !== "DURABLE_AGENT_RUN")) {
+        return null;
+    }
 
     const updatedAgentNode = cloneDeep(agentNode);
     let toolsValue = updatedAgentNode.properties.tools.value;

@@ -108,6 +108,8 @@ export interface DiagramContextState {
         onSelectMemoryManager: (node: FlowNode) => void;
         onDeleteMemoryManager: (node: FlowNode) => void;
         onChatWithAgent?: (node: FlowNode) => void;
+        onAddActivity?: (node: FlowNode) => void;
+        onAddHumanTask?: (node: FlowNode) => void;
     };
     aiNodes?: {
         onModelSelect: (node: FlowNode) => void;

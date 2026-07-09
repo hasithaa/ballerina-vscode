@@ -16,15 +16,23 @@
  * under the License.
  */
 
+/** @jsxImportSource @emotion/react */
 import React, { ReactNode, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import styled from "@emotion/styled";
+import { css } from "@emotion/react";
 import { DiagramEngine, PortWidget } from "@projectstorm/react-diagrams-core";
 import { DurableAgentRunNodeModel } from "./DurableAgentRunNodeModel";
 import {
+    AGENT_NODE_ADD_TOOL_BUTTON_WIDTH,
+    AGENT_NODE_TOOL_GAP,
+    AGENT_NODE_TOOL_SECTION_GAP,
+    CANVAS_BG_COLOR,
     DRAFT_NODE_BORDER_WIDTH,
     NODE_BG_BREAKPOINT_COLOR,
     NODE_BORDER_ERROR_COLOR,
+    LABEL_HEIGHT,
+    LABEL_WIDTH,
     LINK_COLOR,
     NODE_BG_COLOR,
     NODE_BG_HOVER_COLOR,
@@ -32,15 +40,17 @@ import {
     NODE_BORDER_COLOR,
     NODE_BORDER_SELECTED_COLOR,
     NODE_BORDER_WIDTH,
+    NODE_GAP_X,
     NODE_HEIGHT,
     NODE_PADDING,
     NODE_TEXT_COLOR,
     NODE_WIDTH,
 } from "../../../resources/constants";
-import { Button, Item, Menu, MenuItem } from "@wso2/ui-toolkit";
+import { Button, Icon, Item, Menu, MenuItem, getAIModuleIcon, DefaultLlmIcon } from "@wso2/ui-toolkit";
 import { MoreVertIcon } from "../../../resources/icons";
-import { AgentData, FlowNode } from "../../../utils/types";
+import { AgentData, FlowNode, ToolData } from "../../../utils/types";
 import NodeIcon from "../../NodeIcon";
+import ConnectorIcon from "../../ConnectorIcon";
 import { useDiagramContext } from "../../DiagramContext";
 import { DiagnosticsPopUp } from "../../DiagnosticsPopUp";
 import { nodeHasError } from "../../../utils/node";
@@ -282,6 +292,38 @@ export namespace NodeStyles {
     export const MenuButton = styled(Button)`
         border-radius: 5px;
     `;
+
+    export const AddItemContainer = styled.div`
+        display: flex;
+        flex-direction: row;
+        gap: 8px;
+        width: 100%;
+        border-bottom: 1px dashed ${NODE_BORDER_COLOR};
+        padding-bottom: 8px;
+        z-index: 2;
+    `;
+
+    export const AddItemButton = styled.div<{ readOnly: boolean }>`
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+        margin: 8px 0;
+        padding: 8px 0;
+        border: 1px solid ${NODE_BORDER_COLOR};
+        border-radius: 4px;
+        background-color: transparent;
+        color: ${NODE_TEXT_COLOR};
+        font-size: 13px;
+        font-family: "GilmerRegular";
+        white-space: nowrap;
+        cursor: ${(props: { readOnly: boolean }) => (props.readOnly ? "default" : "pointer")};
+        &:hover {
+            background-color: ${CANVAS_BG_COLOR};
+            border-color: ${(props: { readOnly: boolean }) =>
+            props.readOnly ? NODE_BORDER_COLOR : NODE_BORDER_SELECTED_COLOR};
+        }
+    `;
 }
 
 interface DurableAgentRunNodeWidgetProps {
@@ -292,9 +334,19 @@ interface DurableAgentRunNodeWidgetProps {
 
 export interface NodeWidgetProps extends Omit<DurableAgentRunNodeWidgetProps, "children"> { }
 
+type DurableAgentNodeMetadata = NodeMetadata & {
+    activities?: ToolData[];
+    humanTasks?: ToolData[];
+};
+
+type CapabilityItem = {
+    data: ToolData;
+    kind: "tool" | "activity" | "humanTask";
+};
+
 export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps) {
     const { model, engine, onClick } = props;
-    const { onNodeSelect, goToSource, onDeleteNode, removeBreakpoint, addBreakpoint, readOnly, selectedNodeId } =
+    const { onNodeSelect, goToSource, onDeleteNode, removeBreakpoint, addBreakpoint, agentNode, readOnly, selectedNodeId } =
         useDiagramContext();
 
     const isSelected = selectedNodeId === model.node.id;
@@ -374,6 +426,38 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
         setMenuPos(null);
     };
 
+    const onModelEditClick = () => {
+        if (readOnly) {
+            return;
+        }
+        agentNode?.onModelSelect?.(model.node);
+        setMenuPos(null);
+    };
+
+    const onAddToolClick = () => {
+        if (readOnly) {
+            return;
+        }
+        agentNode?.onAddTool?.(model.node);
+        setMenuPos(null);
+    };
+
+    const onAddActivityClick = () => {
+        if (readOnly) {
+            return;
+        }
+        agentNode?.onAddActivity?.(model.node);
+        setMenuPos(null);
+    };
+
+    const onAddHumanTaskClick = () => {
+        if (readOnly) {
+            return;
+        }
+        agentNode?.onAddHumanTask?.(model.node);
+        setMenuPos(null);
+    };
+
     const handleOnMenuClick = (event: React.MouseEvent<HTMLElement | SVGSVGElement>) => {
         if (readOnly) {
             return;
@@ -402,9 +486,43 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
     const disabled = model.node.suggested;
     const nodeTitle = model.node.metadata.label || "Durable Agent";
     const hasError = nodeHasError(model.node);
-    const nodeMetadata = model?.node?.metadata?.data as NodeMetadata;
+    const nodeMetadata = model?.node?.metadata?.data as DurableAgentNodeMetadata;
+    const nodeModelIconUrl = nodeMetadata?.model?.path;
 
     const sanitizedAgent = nodeMetadata?.agent ? sanitizeAgentData(nodeMetadata.agent) : undefined;
+
+    // Capability circles rendered on the right side: AI tools, activities and human tasks.
+    const capabilityItems: CapabilityItem[] = [
+        ...(nodeMetadata?.tools || []).map((tool: ToolData): CapabilityItem => ({ data: tool, kind: "tool" })),
+        ...(nodeMetadata?.activities || []).map((activity: ToolData): CapabilityItem => ({ data: activity, kind: "activity" })),
+        ...(nodeMetadata?.humanTasks || []).map((humanTask: ToolData): CapabilityItem => ({ data: humanTask, kind: "humanTask" })),
+    ];
+
+    let containerHeight =
+        NODE_HEIGHT + AGENT_NODE_TOOL_SECTION_GAP + AGENT_NODE_ADD_TOOL_BUTTON_WIDTH + AGENT_NODE_TOOL_GAP * 2;
+    if (capabilityItems.length > 0) {
+        containerHeight += capabilityItems.length * (NODE_HEIGHT + AGENT_NODE_TOOL_GAP);
+    }
+
+    const renderCapabilityIcon = (item: CapabilityItem) => {
+        if (item.kind === "activity") {
+            return <Icon name="bi-task" sx={{ fontSize: "24px" }} />;
+        }
+        if (item.kind === "humanTask") {
+            return <Icon name="bi-user" sx={{ fontSize: "24px" }} />;
+        }
+        if (item.data.path) {
+            return (
+                <ConnectorIcon
+                    url={item.data.path}
+                    style={{ width: 24, height: 24, fontSize: 24 }}
+                    fallbackIcon={<Icon name="bi-function" sx={{ fontSize: "24px" }} />}
+                    codedata={model.node?.codedata}
+                />
+            );
+        }
+        return <Icon name="bi-function" sx={{ fontSize: "24px" }} />;
+    };
 
     return (
         <NodeStyles.Node data-testid="durable-agent-run-node" readOnly={readOnly}>
@@ -488,6 +606,17 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
                         )}
                     </NodeStyles.Row>
 
+                    <NodeStyles.AddItemContainer>
+                        <NodeStyles.AddItemButton readOnly={readOnly} onClick={onAddActivityClick} title="Add Activity">
+                            <Icon name="bi-plus" sx={{ fontSize: "16px", marginRight: "4px" }} />
+                            Add Activity
+                        </NodeStyles.AddItemButton>
+                        <NodeStyles.AddItemButton readOnly={readOnly} onClick={onAddHumanTaskClick} title="Add Human Task">
+                            <Icon name="bi-plus" sx={{ fontSize: "16px", marginRight: "4px" }} />
+                            Add Human Task
+                        </NodeStyles.AddItemButton>
+                    </NodeStyles.AddItemContainer>
+
                     {
                         sanitizedAgent?.role ? (
                             <NodeStyles.Row readOnly={readOnly} onClick={handleOnClick}>
@@ -530,8 +659,237 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
                 </NodeStyles.Column>
                 <NodeStyles.BottomPortWidget port={model.getPort("out")!} engine={engine} />
             </NodeStyles.Box>
+
+            <svg
+                width={NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT + LABEL_WIDTH + 10}
+                height={model.node.viewState?.ch}
+                viewBox={`0 0 300 ${containerHeight}`}
+                style={{ marginLeft: "-10px", position: "relative", zIndex: 1 }}
+            >
+                {/* durable agent model circle */}
+                <g>
+                    <circle
+                        cx="80"
+                        cy="24"
+                        r="22"
+                        fill={NODE_BG_COLOR}
+                        stroke={NODE_BORDER_COLOR}
+                        strokeWidth={1.5}
+                        strokeDasharray={disabled ? "5 5" : "none"}
+                        opacity={disabled ? 0.7 : 1}
+                        onClick={onModelEditClick}
+                        css={css`
+                            cursor: ${readOnly ? "default" : "pointer"};
+                            transition: stroke 0.4s ease-out;
+                            &:hover {
+                                stroke: ${readOnly ? NODE_BORDER_COLOR : NODE_BORDER_SELECTED_COLOR};
+                            }
+                        `}
+                    >
+                        <title>{"Configure Model Provider"}</title>
+                    </circle>
+
+                    <foreignObject
+                        x="68"
+                        y="12"
+                        width="44"
+                        height="44"
+                        fill={NODE_TEXT_COLOR}
+                        style={{ pointerEvents: "none" }}
+                    >
+                        {getAIModuleIcon(nodeMetadata?.model?.type) ?? (nodeModelIconUrl ? <img src={nodeModelIconUrl} style={{ width: 24, height: 24 }} /> : <DefaultLlmIcon />)}
+                    </foreignObject>
+
+                    <line
+                        x1="0"
+                        y1="25"
+                        x2="57"
+                        y2="25"
+                        style={{
+                            stroke: NODE_TEXT_COLOR,
+                            strokeWidth: 1.5,
+                            markerEnd: `url(#${model.node.id}-arrow-head)`,
+                            markerStart: `url(#${model.node.id}-diamond-start)`,
+                        }}
+                    />
+                </g>
+
+                {/* circles for tools, activities and human tasks */}
+                {capabilityItems.map((item: CapabilityItem, index: number) => {
+                    const itemName = item.data.name;
+                    return (
+                        <g
+                            key={`${item.kind}-${itemName}-${index}`}
+                            transform={`translate(0, ${(index + 1) * (NODE_HEIGHT + AGENT_NODE_TOOL_GAP) + AGENT_NODE_TOOL_SECTION_GAP
+                                })`}
+                        >
+                            <circle
+                                cx="80"
+                                cy="24"
+                                r="22"
+                                fill={NODE_BG_COLOR}
+                                stroke={NODE_BORDER_COLOR}
+                                strokeWidth={1.5}
+                                strokeDasharray={disabled ? "5 5" : "none"}
+                                opacity={disabled ? 0.7 : 1}
+                            >
+                                <title>{itemName}</title>
+                            </circle>
+
+                            <foreignObject
+                                x="68"
+                                y="12"
+                                width="44"
+                                height="44"
+                                fill={NODE_TEXT_COLOR}
+                                style={{ pointerEvents: "none" }}
+                            >
+                                <div className="connector-icon">{renderCapabilityIcon(item)}</div>
+                            </foreignObject>
+
+                            <text
+                                x="110"
+                                y="28"
+                                textAnchor="start"
+                                fill={NODE_TEXT_COLOR}
+                                fontSize="14px"
+                                fontFamily="GilmerRegular"
+                                dominantBaseline="middle"
+                            >
+                                {itemName.length > 20 ? `${itemName.slice(0, 20)}...` : itemName}
+                                <title>{itemName}</title>
+                            </text>
+
+                            <line
+                                x1="0"
+                                y1="25"
+                                x2="57"
+                                y2="25"
+                                style={{
+                                    stroke: NODE_TEXT_COLOR,
+                                    strokeWidth: 1.5,
+                                    markerEnd: `url(#${model.node.id}-arrow-head-item-${item.kind}-${sanitizeId(itemName)})`,
+                                    strokeDasharray: "6 6",
+                                }}
+                            />
+                        </g>
+                    );
+                })}
+
+                {/* Add "Add new tool" button below all capability circles — hidden in read-only mode */}
+                {!readOnly && <g
+                    transform={`translate(-11, ${capabilityItems.length > 0
+                        ? (capabilityItems.length + 1) * (NODE_HEIGHT + AGENT_NODE_TOOL_GAP) + AGENT_NODE_TOOL_SECTION_GAP
+                        : NODE_HEIGHT + AGENT_NODE_TOOL_SECTION_GAP
+                        })`}
+                    onClick={onAddToolClick}
+                    style={{ cursor: "pointer" }}
+                >
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        css={css`
+                            cursor: ${readOnly ? "not-allowed" : "pointer"};
+                            &:hover path:last-of-type {
+                                fill: ${NODE_BORDER_SELECTED_COLOR};
+                            }
+                            &:hover + .custom-tooltip {
+                                opacity: 1;
+                                visibility: visible;
+                            }
+                        `}
+                    >
+                        <title>Add New Tool / MCP Server</title>
+                        <path
+                            fill={CANVAS_BG_COLOR}
+                            d="M12 0C5 0 0 5 0 12s5 12 12 12 12-5 12-12S19 0 12 0z"
+                        />
+                        <path
+                            fill={NODE_TEXT_COLOR}
+                            d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2m0 18a8 8 0 1 1 8-8a8 8 0 0 1-8 8m4-9h-3V8a1 1 0 0 0-2 0v3H8a1 1 0 0 0 0 2h3v3a1 1 0 0 0 2 0v-3h3a1 1 0 0 0 0-2"
+                        />
+                    </svg>
+
+                    {/* Custom tooltip */}
+                    <foreignObject x="25" y="-10" width="100" height="30" style={{ pointerEvents: "none" }}>
+                        <div
+                            className="custom-tooltip"
+                            css={css`
+                                background-color: ${CANVAS_BG_COLOR};
+                                color: ${NODE_TEXT_COLOR};
+                                padding: 4px 8px;
+                                border-radius: 4px;
+                                font-size: 12px;
+                                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                                opacity: 0;
+                                visibility: hidden;
+                                transition: opacity 0.2s ease-in-out;
+                                pointer-events: none;
+                                white-space: nowrap;
+                                font-family: "GilmerRegular";
+                            `}
+                        >
+                            Add New Tool / MCP Server
+                        </div>
+                    </foreignObject>
+                </g>}
+
+                <defs>
+                    <marker
+                        id={`${model.node.id}-arrow-head`}
+                        markerWidth="4"
+                        markerHeight="4"
+                        refX="3"
+                        refY="2"
+                        viewBox="0 0 4 4"
+                        orient="auto"
+                    >
+                        <polygon points="0,4 0,0 4,2" fill={NODE_TEXT_COLOR}></polygon>
+                    </marker>
+
+                    <marker
+                        id={`${model.node.id}-diamond-start`}
+                        markerWidth="8"
+                        markerHeight="8"
+                        refX="4.5"
+                        refY="4"
+                        viewBox="0 0 8 8"
+                        orient="auto"
+                    >
+                        <circle
+                            cx="4"
+                            cy="4"
+                            r="3"
+                            fill={NODE_BG_COLOR}
+                            stroke={NODE_TEXT_COLOR}
+                            strokeWidth="1"
+                        />
+                    </marker>
+                    {capabilityItems.map((item: CapabilityItem, index: number) => (
+                        <marker
+                            key={`${item.kind}-${item.data.name}-${index}`}
+                            id={`${model.node.id}-arrow-head-item-${item.kind}-${sanitizeId(item.data.name)}`}
+                            markerWidth="4"
+                            markerHeight="4"
+                            refX="3"
+                            refY="2"
+                            viewBox="0 0 4 4"
+                            orient="auto"
+                        >
+                            <polygon points="0,4 0,0 4,2" fill={NODE_TEXT_COLOR}></polygon>
+                        </marker>
+                    ))}
+                </defs>
+            </svg>
         </NodeStyles.Node>
     );
+}
+
+// sanitize a string for use as an SVG/HTML id attribute
+function sanitizeId(name: string): string {
+    return name.replace(/[^A-Za-z0-9_-]/g, "_");
 }
 
 // sanitize agent instructions and role

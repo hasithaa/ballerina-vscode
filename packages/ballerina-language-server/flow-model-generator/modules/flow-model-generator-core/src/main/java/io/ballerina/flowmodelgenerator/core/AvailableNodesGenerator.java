@@ -331,13 +331,6 @@ public class AvailableNodesGenerator {
     }
 
     private void setDefaultNodes(boolean disableBallerinaAiNodes, boolean isInWorkflowFunction) {
-        if (this.inDurableAgentFunction) {
-            // A durable agent body is ordinary imperative code with extra capabilities:
-            // lead with the agent configuration group, then fall through to the normal palette.
-            this.rootBuilder.stepIn(Category.Name.DURABLE_AGENT)
-                    .items(getDurableAgentNodes())
-                    .stepOut();
-        }
         if (!isInWorkflowFunction) {
             this.rootBuilder.stepIn(Category.Name.AI)
                     .items(getAiNodes(disableBallerinaAiNodes))
@@ -472,29 +465,6 @@ public class AvailableNodesGenerator {
         return List.of(directLlmCategory, ragCategory, agentCategory);
     }
 
-    private List<Item> getDurableAgentNodes() {
-        List<Item> nodes = new ArrayList<>();
-        record NodeSpec(String label, String description, NodeKind kind) { }
-        List<NodeSpec> specs = List.of(
-                new NodeSpec(Workflow.REGISTER_ACTIVITY_LABEL, Workflow.REGISTER_ACTIVITY_DESCRIPTION,
-                        NodeKind.DURABLE_AGENT_ADD_ACTIVITY),
-                new NodeSpec(Workflow.REGISTER_HUMAN_TASK_LABEL, Workflow.REGISTER_HUMAN_TASK_DESCRIPTION,
-                        NodeKind.DURABLE_AGENT_HUMAN_TASK),
-                new NodeSpec(Workflow.RUN_DURABLE_AGENT_LABEL, Workflow.RUN_DURABLE_AGENT_DESCRIPTION,
-                        NodeKind.DURABLE_AGENT_RUN));
-        for (NodeSpec spec : specs) {
-            nodes.add(new AvailableNode(
-                    new Metadata.Builder<>(null)
-                            .label(spec.label())
-                            .description(spec.description())
-                            .build(),
-                    new Codedata.Builder<>(null)
-                            .node(spec.kind())
-                            .build(),
-                    true));
-        }
-        return nodes;
-    }
 
     private List<Item> getWorkflowNodes(boolean isInWorkflowFunction) {
         List<Item> workflowNodes = new ArrayList<>();

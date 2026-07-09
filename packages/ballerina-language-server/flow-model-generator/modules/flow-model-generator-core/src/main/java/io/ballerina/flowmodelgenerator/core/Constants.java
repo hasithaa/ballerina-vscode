@@ -120,7 +120,7 @@ public class Constants {
         public static final String WORKFLOW = "Workflow";
         public static final String ACTIVITY = "Activity";
         public static final String DEFAULT_CTX_PARAM_NAME = "ctx";
-        public static final String DEFAULT_AGENT_CTX_PARAM_NAME = "agentContext";
+        public static final String DEFAULT_AGENT_CTX_PARAM_NAME = "durableAgentContext";
         public static final String DEFAULT_DATA_PARAM_NAME = "data";
         public static final String DEFAULT_INPUT_PARAM_NAME = "input";
         public static final String DATA_SUFFIX = "Data";
@@ -157,7 +157,7 @@ public class Constants {
         public static final String REGISTER_HUMAN_TASK_DESCRIPTION =
                 "Register a human task the agent can create and wait on";
         public static final String RUN_DURABLE_AGENT_METHOD_NAME = "runDurableAgent";
-        public static final String RUN_DURABLE_AGENT_LABEL = "Run Agent";
+        public static final String RUN_DURABLE_AGENT_LABEL = "Run Durable Agent";
         public static final String RUN_DURABLE_AGENT_DESCRIPTION =
                 "Run the durable agent loop with the configured capabilities";
         public static final String UPDATE_AGENT_FUNCTION_NAME = "updateAgent";
