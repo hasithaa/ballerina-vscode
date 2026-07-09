@@ -2390,11 +2390,20 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                         }
                     }
                 }
+                // genActivity rewrites and reformats the file (e.g. splitting the combined import line),
+                // which shifts the position the create flow was launched from. Re-resolve the insertion
+                // point from a fresh flow model — append after the last node in the refreshed workflow.
+                const refreshed = await rpcClient.getBIDiagramRpcClient().getFlowModel({});
+                const refreshedNodes = refreshed?.flowModel?.nodes ?? [];
+                const anchorLine = refreshedNodes.length > 0
+                    ? refreshedNodes[refreshedNodes.length - 1]?.codedata?.lineRange?.endLine
+                    : undefined;
+                const insertLine = anchorLine ?? targetRef.current.startLine;
                 callNode.codedata.isNew = true;
                 callNode.codedata.lineRange = {
-                    fileName: template.flowNode.codedata?.lineRange?.fileName || model?.fileName,
-                    startLine: targetRef.current.startLine,
-                    endLine: targetRef.current.startLine,
+                    fileName: refreshed?.flowModel?.fileName ?? model?.fileName,
+                    startLine: insertLine,
+                    endLine: insertLine,
                 };
                 selectedNodeRef.current = callNode;
                 nodeTemplateRef.current = callNode;
