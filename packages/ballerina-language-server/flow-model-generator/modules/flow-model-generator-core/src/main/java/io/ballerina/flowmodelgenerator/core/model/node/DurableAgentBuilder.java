@@ -32,7 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.AGENT_CONTEXT_CLASS_NAME;
-import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.DEFAULT_CTX_PARAM_NAME;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.DEFAULT_AGENT_CTX_PARAM_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.DEFAULT_INPUT_PARAM_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_MODULE;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_ORG;
@@ -94,7 +94,7 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
         // The agent context parameter comes first, followed by the optional input record
         // and the chat events record used for conversational interactions.
         WorkflowBuilder.generateParameter(sourceBuilder,
-                WORKFLOW_MODULE + ":" + AGENT_CONTEXT_CLASS_NAME, DEFAULT_CTX_PARAM_NAME);
+                WORKFLOW_MODULE + ":" + AGENT_CONTEXT_CLASS_NAME, DEFAULT_AGENT_CTX_PARAM_NAME);
 
         Optional<Property> inputProperty = sourceBuilder.getProperty(WorkflowBuilder.INPUT_KEY);
         String inputTypeName = inputProperty.map(p -> p.value().toString()).orElse("");
@@ -115,7 +115,7 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
             // Pre-populate the body with the agent run call so a freshly created durable
             // agent is immediately runnable: the wizard ensures the shared wso2ModelProvider
             // right after creating the function.
-            String runStatement = "check " + DEFAULT_CTX_PARAM_NAME + ".runDurableAgent("
+            String runStatement = "check " + DEFAULT_AGENT_CTX_PARAM_NAME + ".runDurableAgent("
                     + "systemPrompt = {role: string `" + funcName + "`, instructions: string ``}, "
                     + "model = wso2ModelProvider);";
             sourceBuilder

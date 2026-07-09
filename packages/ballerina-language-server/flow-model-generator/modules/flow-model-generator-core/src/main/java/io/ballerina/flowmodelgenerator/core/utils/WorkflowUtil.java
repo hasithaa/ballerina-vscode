@@ -190,11 +190,11 @@ public class WorkflowUtil {
         try {
             sourceBuilder.workspaceManager.loadProject(sourceBuilder.filePath);
         } catch (Exception e) {
-            return Constants.Workflow.DEFAULT_CTX_PARAM_NAME;
+            return Constants.Workflow.DEFAULT_AGENT_CTX_PARAM_NAME;
         }
         FunctionDefinitionNode agentFunction = findEnclosingDurableAgentFunction(sourceBuilder);
         if (agentFunction == null) {
-            return Constants.Workflow.DEFAULT_CTX_PARAM_NAME;
+            return Constants.Workflow.DEFAULT_AGENT_CTX_PARAM_NAME;
         }
         SemanticModel semanticModel = FileSystemUtils.getSemanticModel(sourceBuilder.workspaceManager,
                 sourceBuilder.filePath);
@@ -212,7 +212,7 @@ public class WorkflowUtil {
                 return paramSymbol.getName().get();
             }
         }
-        return Constants.Workflow.DEFAULT_CTX_PARAM_NAME;
+        return Constants.Workflow.DEFAULT_AGENT_CTX_PARAM_NAME;
     }
 
     /**

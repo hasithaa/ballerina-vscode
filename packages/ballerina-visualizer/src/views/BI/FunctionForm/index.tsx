@@ -867,7 +867,7 @@ export function FunctionForm(props: FunctionFormProps) {
                 location: {
                     view: null,
                     recentIdentifier: functionName,
-                    artifactType: isAgentTool ? DIRECTORY_MAP.AGENT_TOOL : (isWorkflow || isDurableAgent) ? DIRECTORY_MAP.WORKFLOW : isActivity ? DIRECTORY_MAP.ACTIVITY : DIRECTORY_MAP.FUNCTION
+                    artifactType: isAgentTool ? DIRECTORY_MAP.AGENT_TOOL : isDurableAgent ? DIRECTORY_MAP.DURABLE_AGENT : isWorkflow ? DIRECTORY_MAP.WORKFLOW : isActivity ? DIRECTORY_MAP.ACTIVITY : DIRECTORY_MAP.FUNCTION
                 },
                 isPopup: true
             });

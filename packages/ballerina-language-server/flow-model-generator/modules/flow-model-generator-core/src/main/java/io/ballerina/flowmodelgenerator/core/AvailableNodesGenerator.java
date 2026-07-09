@@ -344,9 +344,11 @@ public class AvailableNodesGenerator {
                     .stepOut();
         }
 
-        this.rootBuilder.stepIn(Category.Name.WORKFLOW)
-                .items(getWorkflowNodes(isInWorkflowFunction))
-                .stepOut();
+        if (!this.inDurableAgentFunction) {
+            this.rootBuilder.stepIn(Category.Name.WORKFLOW)
+                    .items(getWorkflowNodes(isInWorkflowFunction))
+                    .stepOut();
+        }
 
         AvailableNode function = new AvailableNode(
                 new Metadata.Builder<>(null)
@@ -572,8 +574,20 @@ public class AvailableNodesGenerator {
                     true
             );
 
+            AvailableNode updateAgent = new AvailableNode(
+                    new Metadata.Builder<>(null)
+                            .label(Workflow.UPDATE_AGENT_LABEL)
+                            .description(Workflow.UPDATE_AGENT_DESCRIPTION)
+                            .build(),
+                    new Codedata.Builder<>(null)
+                            .node(NodeKind.DURABLE_AGENT_UPDATE)
+                            .build(),
+                    true
+            );
+
             workflowNodes.add(runWorkflow);
             workflowNodes.add(sendData);
+            workflowNodes.add(updateAgent);
         }
 
         return workflowNodes;

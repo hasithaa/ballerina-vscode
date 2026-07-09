@@ -48,6 +48,9 @@ import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_O
 public class DurableAgentHumanTaskBuilder extends CallBuilder {
 
     public static final String TASK_NAME_KEY = "taskName";
+    // Signature parameters surfaced when a call is re-read from source.
+    public static final String RESULT_TYPE_KEY = "resultType";
+    public static final String TIMEOUT_KEY = "timeout";
     public static final String USER_ROLES_KEY = "userRoles";
     public static final String TITLE_KEY = "title";
     public static final String DESCRIPTION_KEY = "description";
@@ -123,8 +126,10 @@ public class DurableAgentHumanTaskBuilder extends CallBuilder {
                 .keyword(SyntaxKind.COMMA_TOKEN)
                 .name(userRoles);
 
+        appendNamedArg(sourceBuilder, RESULT_TYPE_KEY);
         appendNamedArg(sourceBuilder, TITLE_KEY);
         appendNamedArg(sourceBuilder, DESCRIPTION_KEY);
+        appendNamedArg(sourceBuilder, TIMEOUT_KEY);
 
         sourceBuilder.token()
                 .keyword(SyntaxKind.CLOSE_PAREN_TOKEN)

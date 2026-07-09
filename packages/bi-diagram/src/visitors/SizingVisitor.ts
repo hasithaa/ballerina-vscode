@@ -318,6 +318,15 @@ export class SizingVisitor implements BaseVisitor {
         this.setNodeSize(node, containerLeftWidth, containerRightWidth, containerHeight);
     }
 
+    endVisitDurableAgentRun(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        const halfNodeWidth = NODE_WIDTH / 2;
+        // Fixed-height agent box (header + role + instructions rows) without the
+        // right-side model circle or tools column of the AI agent node.
+        const containerHeight = NODE_HEIGHT * 3;
+        this.setNodeSize(node, halfNodeWidth, halfNodeWidth, containerHeight);
+    }
+
     endVisitEmpty(node: FlowNode, parent?: FlowNode): void {
         if (!this.validateNode(node)) return;
         if (reverseCustomNodeId(node.id).label === LAST_NODE) {

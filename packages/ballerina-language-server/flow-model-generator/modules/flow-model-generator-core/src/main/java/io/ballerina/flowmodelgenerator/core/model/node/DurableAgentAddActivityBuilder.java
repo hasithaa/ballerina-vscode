@@ -54,6 +54,8 @@ import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_O
 public class DurableAgentAddActivityBuilder extends CallBuilder {
 
     public static final String ACTIVITY_KEY = "activity";
+    // The registerActivities signature parameter name; present on nodes re-read from source.
+    public static final String TOOLS_PARAM_KEY = "tools";
     public static final String ACTIVITY_LABEL = "Activity";
     public static final String ACTIVITY_DOC = "The @workflow:Activity function to expose as an agent tool";
 
@@ -116,8 +118,15 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
         String ctxParamName = WorkflowUtil.resolveAgentContextParamName(sourceBuilder);
         Optional<Property> activityProperty = sourceBuilder.getProperty(ACTIVITY_KEY);
         String activity = activityProperty.map(p -> p.value() == null ? "" : p.value().toString()).orElse("");
-        if (activity.isBlank()) {
-            throw new IllegalStateException("An activity function must be selected");
+        String activityList;
+        if (!activity.isBlank()) {
+            activityList = "[" + activity + "]";
+        } else {
+            // Source re-read path: the raw signature parameter (`tools`) carries the full list.
+            activityList = sourceBuilder.getProperty(TOOLS_PARAM_KEY)
+                    .map(p -> p.value() == null ? "" : p.value().toString())
+                    .filter(value -> !value.isBlank())
+                    .orElseThrow(() -> new IllegalStateException("An activity function must be selected"));
         }
 
         sourceBuilder.token()
@@ -126,9 +135,7 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                 .keyword(SyntaxKind.DOT_TOKEN)
                 .name(REGISTER_ACTIVITIES_METHOD_NAME)
                 .keyword(SyntaxKind.OPEN_PAREN_TOKEN)
-                .keyword(SyntaxKind.OPEN_BRACKET_TOKEN)
-                .name(activity)
-                .keyword(SyntaxKind.CLOSE_BRACKET_TOKEN)
+                .name(activityList)
                 .keyword(SyntaxKind.CLOSE_PAREN_TOKEN)
                 .endOfStatement();
 

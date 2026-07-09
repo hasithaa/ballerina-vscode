@@ -18,13 +18,16 @@
 
 package io.ballerina.flowmodelgenerator.core.model.node;
 
+import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.ClassSymbol;
 import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.compiler.api.symbols.SymbolKind;
 import io.ballerina.compiler.api.symbols.TypeSymbol;
 import io.ballerina.compiler.api.symbols.VariableSymbol;
 import io.ballerina.compiler.syntax.tree.SyntaxKind;
+import io.ballerina.flowmodelgenerator.core.AiUtils;
 import io.ballerina.flowmodelgenerator.core.Constants;
+import io.ballerina.flowmodelgenerator.core.model.NodeBuilder;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Option;
 import io.ballerina.flowmodelgenerator.core.model.Property;
@@ -55,10 +58,11 @@ import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_M
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_ORG;
 
 /**
- * Runs the durable agent loop. The form mirrors a regular {@code ai:Agent}: the included
- * {@code AgentRunConfig} record expands into the same fields (system prompt, model, tools,
- * maximum iterations) plus the query. Generates
- * {@code check ctx.runDurableAgent(<query>, systemPrompt = {...}, model = <m>, tools = [...]);}.
+ * Runs the durable agent loop. The form mirrors a regular {@code ai:Agent}: Role and Instructions
+ * prompt fields (composed into the {@code ai:SystemPrompt}), the query, a model-provider dropdown,
+ * tools, and the iteration limit. Generates
+ * {@code check agentContext.runDurableAgent(<query>, systemPrompt = {role: ..., instructions: ...},
+ * model = <m>, tools = [...]);}.
  *
  * @since 1.8.0
  */
@@ -67,17 +71,25 @@ public class DurableAgentRunBuilder extends CallBuilder {
     public static final String QUERY_KEY = "query";
     public static final String CONTEXT_KEY = "context";
     public static final String SYSTEM_PROMPT_KEY = "systemPrompt";
+    public static final String ROLE_KEY = "role";
+    public static final String INSTRUCTIONS_KEY = "instructions";
     public static final String MODEL_KEY = "model";
     public static final String TOOLS_KEY = "tools";
     public static final String MAX_ITER_KEY = "maxIter";
     public static final String VERBOSE_KEY = "verbose";
 
-    // Named-argument order in the generated call: agent identity first, limits last.
-    private static final List<String> NAMED_ARG_ORDER =
-            List.of(SYSTEM_PROMPT_KEY, MODEL_KEY, TOOLS_KEY, MAX_ITER_KEY, VERBOSE_KEY, CONTEXT_KEY);
+    public static final String ROLE_LABEL = "Role";
+    public static final String ROLE_DOC = "Define the agent's primary function";
+    public static final String ROLE_PLACEHOLDER = "e.g., Customer Support Assistant";
+    public static final String INSTRUCTIONS_LABEL = "Instructions";
+    public static final String INSTRUCTIONS_DOC = "Detailed instructions for the agent";
+    public static final String INSTRUCTIONS_PLACEHOLDER = "e.g., You are a friendly assistant. Your goal is to...";
+
+    // The order the form fields appear in: agent identity first, then the query and capabilities.
+    private static final List<String> FORM_ORDER =
+            List.of(ROLE_KEY, INSTRUCTIONS_KEY, QUERY_KEY, MODEL_KEY, TOOLS_KEY, MAX_ITER_KEY);
 
     private static final String STRING_TYPE = "string";
-    private static final String SYSTEM_PROMPT_TYPE = "ai:SystemPrompt";
     private static final String MODEL_TYPE = "ai:ModelProvider";
     private static final String TOOLS_TYPE = "(ai:BaseToolKit|ai:ToolConfig|ai:FunctionTool)[]";
 
@@ -123,8 +135,6 @@ public class DurableAgentRunBuilder extends CallBuilder {
             if (functionData == null || functionData.parameters() == null || functionData.parameters().isEmpty()) {
                 fallbackTemplate = true;
             } else {
-                // The `context` parameter is reserved (a caller-provided ai:Context cannot cross
-                // the durable activity boundary today) — keep the form focused on the agent config.
                 LinkedHashMap<String, ParameterData> params = new LinkedHashMap<>(functionData.parameters());
                 params.remove(CONTEXT_KEY);
                 functionData.setParameters(params);
@@ -142,16 +152,54 @@ public class DurableAgentRunBuilder extends CallBuilder {
             setFallbackProperties();
         }
 
-        convertModelToSelect(context);
+        applyAgentFormShape(this, Map.of());
+        convertModelToSelect(this, getModelProviderVariables(context));
         properties().checkError(true);
+    }
+
+    /**
+     * Reshapes the raw signature-derived properties into the agent form: the record-typed
+     * {@code systemPrompt} field is replaced by Role and Instructions prompt fields (same shape as
+     * the regular AI agent node), the reserved/unused parameters are dropped, and the fields are
+     * reordered. Shared with CodeAnalyzer's source re-read path so both render the same form.
+     *
+     * @param nodeBuilder the builder holding raw properties
+     * @param promptValues optional parsed values keyed by {@link #ROLE_KEY}/{@link #INSTRUCTIONS_KEY}
+     */
+    public static void applyAgentFormShape(NodeBuilder nodeBuilder,
+                                           Map<String, AiUtils.AgentPropertyValue> promptValues) {
+        Map<String, Property> props = nodeBuilder.properties().build();
+        props.remove(SYSTEM_PROMPT_KEY);
+        props.remove(CONTEXT_KEY);
+        props.remove(VERBOSE_KEY);
+
+        AiUtils.AgentPropertyValue role = promptValues.get(ROLE_KEY);
+        AiUtils.AgentPropertyValue instructions = promptValues.get(INSTRUCTIONS_KEY);
+        AiUtils.addStringProperty(nodeBuilder, ROLE_KEY, ROLE_LABEL, ROLE_DOC, ROLE_PLACEHOLDER,
+                role == null ? "" : AiUtils.restoreBackticksFromStringTemplate(role.value()),
+                role == null ? Property.ValueType.PROMPT : role.selectedType());
+        AiUtils.addStringProperty(nodeBuilder, INSTRUCTIONS_KEY, INSTRUCTIONS_LABEL, INSTRUCTIONS_DOC,
+                INSTRUCTIONS_PLACEHOLDER,
+                instructions == null ? "" : AiUtils.restoreBackticksFromStringTemplate(instructions.value()),
+                instructions == null ? Property.ValueType.PROMPT : instructions.selectedType());
+
+        // Reorder in place: identity fields first, then everything else in its original order.
+        Map<String, Property> ordered = new LinkedHashMap<>();
+        for (String key : FORM_ORDER) {
+            Property property = props.remove(key);
+            if (property != null) {
+                ordered.put(key, property);
+            }
+        }
+        ordered.putAll(props);
+        props.clear();
+        props.putAll(ordered);
     }
 
     // Static form used when the workflow module signature is unavailable.
     private void setFallbackProperties() {
         addCustomProperty(QUERY_KEY, "Query", "The initial user query; when omitted the agent waits for the "
                 + "first chat event", STRING_TYPE, false, "");
-        addCustomProperty(SYSTEM_PROMPT_KEY, "System Prompt", "The system prompt assigned to the agent",
-                SYSTEM_PROMPT_TYPE, true, "{role: \"\", instructions: \"\"}");
         addCustomProperty(MODEL_KEY, "Model", "The model provider used for the agent's LLM calls",
                 MODEL_TYPE, true, "");
         addCustomProperty(TOOLS_KEY, "Tools", "The AI tools available to the agent",
@@ -179,22 +227,27 @@ public class DurableAgentRunBuilder extends CallBuilder {
                 .addProperty(key);
     }
 
-    // The model is selected from the module-level `ai:ModelProvider` variables of the project
-    // (typically the shared `wso2ModelProvider` created with the agent). Rebuilding the property
-    // on its existing key keeps its position in the form.
-    private void convertModelToSelect(TemplateContext context) {
-        Map<String, Property> props = properties().build();
+    /**
+     * Converts the {@code model} property into a dropdown of the module-level
+     * {@code ai:ModelProvider} variables (typically the shared {@code wso2ModelProvider}).
+     * Rebuilding the property on its existing key keeps its position in the form. Shared with
+     * CodeAnalyzer's source re-read path.
+     *
+     * @param nodeBuilder the builder holding the model property
+     * @param options the model provider variable options
+     */
+    public static void convertModelToSelect(NodeBuilder nodeBuilder, List<Option> options) {
+        Map<String, Property> props = nodeBuilder.properties().build();
         Property model = props.get(MODEL_KEY);
         if (model == null) {
             return;
         }
-        List<Option> options = getModelProviderVariables(context);
         String label = model.metadata() != null && model.metadata().label() != null
                 ? model.metadata().label() : "Model";
         String doc = model.metadata() != null && model.metadata().description() != null
                 ? model.metadata().description() : "The model provider used for the agent's LLM calls";
         String value = model.value() == null ? "" : model.value().toString();
-        properties().custom()
+        nodeBuilder.properties().custom()
                 .metadata()
                     .label(label)
                     .description(doc)
@@ -215,7 +268,13 @@ public class DurableAgentRunBuilder extends CallBuilder {
                 .addProperty(MODEL_KEY);
     }
 
-    private List<Option> getModelProviderVariables(TemplateContext context) {
+    /**
+     * Lists the module-level variables whose type is (or includes) {@code ai:ModelProvider}.
+     *
+     * @param context the template context to resolve the project from
+     * @return dropdown options, one per provider variable
+     */
+    public static List<Option> getModelProviderVariables(TemplateContext context) {
         List<Option> options = new ArrayList<>();
         try {
             Package currentPackage = PackageUtil.loadProject(context.workspaceManager(), context.filePath())
@@ -230,6 +289,28 @@ public class DurableAgentRunBuilder extends CallBuilder {
                                     options.add(new Option(name, name)))));
         } catch (RuntimeException e) {
             // Project resolution failures leave the dropdown empty; the field is still editable.
+        }
+        return options;
+    }
+
+    /**
+     * Lists the module-level {@code ai:ModelProvider} variables visible in the given semantic
+     * model. Used by CodeAnalyzer's source re-read path, which has no template context.
+     *
+     * @param semanticModel the semantic model of the module being analyzed
+     * @return dropdown options, one per provider variable
+     */
+    public static List<Option> modelProviderOptions(SemanticModel semanticModel) {
+        List<Option> options = new ArrayList<>();
+        try {
+            semanticModel.moduleSymbols().stream()
+                    .filter(symbol -> symbol.kind() == SymbolKind.VARIABLE)
+                    .map(symbol -> (VariableSymbol) symbol)
+                    .filter(variable -> isModelProviderType(variable.typeDescriptor()))
+                    .forEach(variable -> variable.getName().ifPresent(name ->
+                            options.add(new Option(name, name))));
+        } catch (RuntimeException e) {
+            // Leave the dropdown empty on resolution failures.
         }
         return options;
     }
@@ -273,8 +354,7 @@ public class DurableAgentRunBuilder extends CallBuilder {
     public Map<Path, List<TextEdit>> toSource(SourceBuilder sourceBuilder) {
         String ctxParamName = WorkflowUtil.resolveAgentContextParamName(sourceBuilder);
 
-        String systemPrompt = requireValue(sourceBuilder, SYSTEM_PROMPT_KEY,
-                "A system prompt is required to run the agent");
+        String systemPrompt = buildSystemPromptSource(sourceBuilder);
         String model = requireValue(sourceBuilder, MODEL_KEY,
                 "A model provider is required to run the agent");
 
@@ -289,10 +369,7 @@ public class DurableAgentRunBuilder extends CallBuilder {
         }
         callArgs.add(SYSTEM_PROMPT_KEY + " = " + systemPrompt);
         callArgs.add(MODEL_KEY + " = " + model);
-        for (String key : NAMED_ARG_ORDER) {
-            if (SYSTEM_PROMPT_KEY.equals(key) || MODEL_KEY.equals(key)) {
-                continue;
-            }
+        for (String key : List.of(TOOLS_KEY, MAX_ITER_KEY)) {
             sourceBuilder.getProperty(key).ifPresent(p -> {
                 String source = p.toSourceCode();
                 if (source != null && !source.isEmpty() && !isEmptyToolsList(key, source)) {
@@ -315,6 +392,35 @@ public class DurableAgentRunBuilder extends CallBuilder {
                 .textEdit()
                 .acceptImport(WORKFLOW_ORG, WORKFLOW_MODULE)
                 .build();
+    }
+
+    // Composes the ai:SystemPrompt literal from the Role and Instructions fields; prompt-typed
+    // values are wrapped as string templates, expression-typed values pass through raw.
+    private static String buildSystemPromptSource(SourceBuilder sourceBuilder) {
+        String role = promptFieldSource(sourceBuilder, ROLE_KEY);
+        String instructions = promptFieldSource(sourceBuilder, INSTRUCTIONS_KEY);
+        return "{" + ROLE_KEY + ": " + role + ", " + INSTRUCTIONS_KEY + ": " + instructions + "}";
+    }
+
+    private static String promptFieldSource(SourceBuilder sourceBuilder, String key) {
+        Optional<Property> property = sourceBuilder.getProperty(key);
+        if (property.isEmpty()) {
+            return "string ``";
+        }
+        Property p = property.get();
+        String value = p.value() == null ? "" : p.value().toString();
+        if (isPromptTypeSelected(p)) {
+            return AiUtils.replaceBackticksForStringTemplate(value);
+        }
+        return value.isEmpty() ? "string ``" : value;
+    }
+
+    private static boolean isPromptTypeSelected(Property property) {
+        if (property.types() == null) {
+            return true;
+        }
+        return property.types().stream()
+                .anyMatch(type -> type.fieldType() == Property.ValueType.PROMPT && type.selected());
     }
 
     // The tools list defaults to []; omit the argument entirely when the user left it empty.

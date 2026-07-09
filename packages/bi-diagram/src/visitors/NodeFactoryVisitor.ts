@@ -45,6 +45,7 @@ import { Branch, FlowNode, NodeModel } from "../utils/types";
 import { EndNodeModel } from "../components/nodes/EndNode";
 import { ErrorNodeModel } from "../components/nodes/ErrorNode";
 import { AgentCallNodeModel } from "../components/nodes/AgentCallNode/AgentCallNodeModel";
+import { DurableAgentRunNodeModel } from "../components/nodes/DurableAgentRunNode/DurableAgentRunNodeModel";
 import { PromptNodeModel } from "../components/nodes/PromptNode/PromptNodeModel";
 
 export class NodeFactoryVisitor implements BaseVisitor {
@@ -700,6 +701,17 @@ export class NodeFactoryVisitor implements BaseVisitor {
             return;
         }
         const nodeModel = new AgentCallNodeModel(node);
+        this.nodes.push(nodeModel);
+        this.updateNodeLinks(node, nodeModel);
+        this.addSuggestionsButton(node);
+    }
+
+    beginVisitDurableAgentRun(node: FlowNode, parent?: FlowNode): void {
+        if (!this.validateNode(node)) return;
+        if (!node.id) {
+            return;
+        }
+        const nodeModel = new DurableAgentRunNodeModel(node);
         this.nodes.push(nodeModel);
         this.updateNodeLinks(node, nodeModel);
         this.addSuggestionsButton(node);

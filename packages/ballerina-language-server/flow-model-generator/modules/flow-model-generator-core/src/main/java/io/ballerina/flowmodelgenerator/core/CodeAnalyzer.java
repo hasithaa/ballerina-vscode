@@ -148,6 +148,7 @@ import io.ballerina.flowmodelgenerator.core.model.node.ChunkerBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.ClassInitBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DataLoaderBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DataMapperBuilder;
+import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentRunBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.EmbeddingProviderBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.FailBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.FunctionCall;
@@ -218,6 +219,7 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.ACTIVITY_MODULE;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.AGENT_CONTEXT_CLASS_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.AWAIT_METHOD_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.BUILTIN_EMAIL_FUNCTION;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.BUILTIN_REST_FUNCTION;
@@ -226,6 +228,15 @@ import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.CALL_ACTIV
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.CALL_HUMAN_TASK_METHOD_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.CONTEXT_CLASS_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.HUMAN_TASK_DESCRIPTION;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITIES_METHOD_NAME;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITY_DESCRIPTION;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITY_LABEL;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_HUMAN_TASK_DESCRIPTION;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_HUMAN_TASK_LABEL;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_HUMAN_TASK_METHOD_NAME;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.RUN_DURABLE_AGENT_DESCRIPTION;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.RUN_DURABLE_AGENT_LABEL;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.RUN_DURABLE_AGENT_METHOD_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.HUMAN_TASK_LABEL;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.SLEEP_DESCRIPTION;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.SLEEP_LABEL;
@@ -929,6 +940,111 @@ public class CodeAnalyzer extends NodeVisitor {
         boolean hasCheck = parentKind == SyntaxKind.CHECK_ACTION
                 || parentKind == SyntaxKind.CHECK_EXPRESSION;
         nodeBuilder.properties().checkError(hasCheck);
+    }
+
+    // Rebuilds a durable-agent AgentContext call (runDurableAgent / registerActivities /
+    // registerHumanTask) from source, keeping the same form shape as the palette templates.
+    private void populateDurableAgentCallProperties(MethodCallExpressionNode callNode, FunctionSymbol functionSymbol,
+                                                    String functionName, NodeKind nodeKind) {
+        FunctionData functionData = new FunctionDataBuilder()
+                .name(functionName)
+                .functionSymbol(functionSymbol)
+                .semanticModel(semanticModel)
+                .userModuleInfo(moduleInfo)
+                .build();
+
+        String label = switch (nodeKind) {
+            case DURABLE_AGENT_RUN -> RUN_DURABLE_AGENT_LABEL;
+            case DURABLE_AGENT_ADD_ACTIVITY -> REGISTER_ACTIVITY_LABEL;
+            default -> REGISTER_HUMAN_TASK_LABEL;
+        };
+        String description = switch (nodeKind) {
+            case DURABLE_AGENT_RUN -> RUN_DURABLE_AGENT_DESCRIPTION;
+            case DURABLE_AGENT_ADD_ACTIVITY -> REGISTER_ACTIVITY_DESCRIPTION;
+            default -> REGISTER_HUMAN_TASK_DESCRIPTION;
+        };
+
+        nodeBuilder
+                .symbolInfo(functionSymbol)
+                .metadata()
+                    .label(label)
+                    .description(description)
+                    .stepOut()
+                .codedata()
+                    .node(nodeKind)
+                    .org(WORKFLOW_ORG)
+                    .module(WORKFLOW_MODULE)
+                    .object(AGENT_CONTEXT_CLASS_NAME)
+                    .symbol(functionName);
+
+        processFunctionSymbol(callNode, callNode.arguments(), functionSymbol, functionData);
+
+        if (nodeKind == NodeKind.DURABLE_AGENT_RUN) {
+            populateDurableAgentRunExtras(callNode);
+        }
+
+        SyntaxKind parentKind = callNode.parent().kind();
+        boolean hasCheck = parentKind == SyntaxKind.CHECK_ACTION
+                || parentKind == SyntaxKind.CHECK_EXPRESSION;
+        nodeBuilder.properties().checkError(hasCheck);
+    }
+
+    // Splits the runDurableAgent systemPrompt argument into Role/Instructions prompt fields
+    // (matching the palette template) and attaches the agent/model metadata used by the
+    // agent-style diagram widget.
+    private void populateDurableAgentRunExtras(MethodCallExpressionNode callNode) {
+        ExpressionNode systemPromptArg = null;
+        ExpressionNode modelArg = null;
+        for (FunctionArgumentNode arg : callNode.arguments()) {
+            if (arg instanceof NamedArgumentNode namedArg) {
+                switch (namedArg.argumentName().name().text()) {
+                    case DurableAgentRunBuilder.SYSTEM_PROMPT_KEY -> systemPromptArg = namedArg.expression();
+                    case DurableAgentRunBuilder.MODEL_KEY -> modelArg = namedArg.expression();
+                    default -> {
+                    }
+                }
+            }
+        }
+
+        Map<String, AiUtils.AgentPropertyValue> promptValues = new LinkedHashMap<>();
+        if (systemPromptArg != null && systemPromptArg.kind() == SyntaxKind.MAPPING_CONSTRUCTOR) {
+            for (MappingFieldNode field : ((MappingConstructorExpressionNode) systemPromptArg).fields()) {
+                if (!(field instanceof SpecificFieldNode specificField)) {
+                    continue;
+                }
+                Optional<ExpressionNode> valueExprOpt = specificField.valueExpr();
+                if (valueExprOpt.isEmpty()) {
+                    continue;
+                }
+                ExpressionNode valueExpr = valueExprOpt.get();
+                String value;
+                Property.ValueType selectedType;
+                if (valueExpr.kind() == SyntaxKind.STRING_TEMPLATE_EXPRESSION) {
+                    value = ((TemplateExpressionNode) valueExpr).content().stream()
+                            .map(Node::toString)
+                            .collect(Collectors.joining());
+                    value = AiUtils.restoreBackticksFromStringTemplate(value);
+                    selectedType = Property.ValueType.PROMPT;
+                } else {
+                    value = valueExpr.toString().trim();
+                    selectedType = Property.ValueType.EXPRESSION;
+                }
+                promptValues.put(specificField.fieldName().toString().trim(),
+                        new AiUtils.AgentPropertyValue(value, selectedType));
+            }
+        }
+
+        DurableAgentRunBuilder.applyAgentFormShape(nodeBuilder, promptValues);
+        DurableAgentRunBuilder.convertModelToSelect(nodeBuilder,
+                DurableAgentRunBuilder.modelProviderOptions(semanticModel));
+
+        Map<String, String> agentData = new LinkedHashMap<>();
+        promptValues.forEach((key, propertyValue) -> agentData.put(key, propertyValue.value()));
+        nodeBuilder.metadata().addData("agent", agentData);
+        if (modelArg != null) {
+            nodeBuilder.metadata().addData("model",
+                    new ToolData(modelArg.toString().trim(), null, "", null));
+        }
     }
 
     /**
@@ -3248,6 +3364,23 @@ public class CodeAnalyzer extends NodeVisitor {
             startNode(NodeKind.SLEEP, expressionNode.parent());
             populateSleepNodeProperties(methodCallExpressionNode, functionSymbol);
             return;
+        }
+
+        // AgentContext methods inside a @workflow:DurableAgent function are first-class nodes.
+        if (AGENT_CONTEXT_CLASS_NAME.equals(classSymbol.getName().orElse(""))
+                && isWorkflowModule(classSymbol.getModule())) {
+            NodeKind agentNodeKind = switch (functionName) {
+                case RUN_DURABLE_AGENT_METHOD_NAME -> NodeKind.DURABLE_AGENT_RUN;
+                case REGISTER_ACTIVITIES_METHOD_NAME -> NodeKind.DURABLE_AGENT_ADD_ACTIVITY;
+                case REGISTER_HUMAN_TASK_METHOD_NAME -> NodeKind.DURABLE_AGENT_HUMAN_TASK;
+                default -> null;
+            };
+            if (agentNodeKind != null) {
+                startNode(agentNodeKind, methodCallExpressionNode.parent());
+                populateDurableAgentCallProperties(methodCallExpressionNode, functionSymbol, functionName,
+                        agentNodeKind);
+                return;
+            }
         }
 
         if (isAgentClass(classSymbol)) {
