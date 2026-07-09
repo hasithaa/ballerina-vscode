@@ -112,9 +112,16 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
 
         boolean isNew = Boolean.TRUE.equals(sourceBuilder.flowNode.codedata().isNew());
         if (isNew || sourceBuilder.flowNode.codedata().lineRange() == null) {
+            // Pre-populate the body with the agent run call so a freshly created durable
+            // agent is immediately runnable: the wizard ensures the shared wso2ModelProvider
+            // right after creating the function.
+            String runStatement = "check " + DEFAULT_CTX_PARAM_NAME + ".runDurableAgent("
+                    + "systemPrompt = {role: string `" + funcName + "`, instructions: string ``}, "
+                    + "model = wso2ModelProvider);";
             sourceBuilder
                     .token()
                         .openBrace()
+                        .name(runStatement)
                         .closeBrace()
                         .stepOut()
                     .textEdit(SourceBuilder.SourceKind.DECLARATION)

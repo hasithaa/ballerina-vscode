@@ -172,6 +172,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     const targetRef = useRef<LineRange>();
     const suggestedText = useRef<string>();
     const selectedClientName = useRef<string>();
+    // True while the ACTIVITY_LIST panel was opened from the durable agent's "Add Activity"
+    // node: in-list searches must keep hiding builtins and produce DURABLE_AGENT_ADD_ACTIVITY items.
+    const durableAgentActivityListRef = useRef<boolean>(false);
     const initialCategoriesRef = useRef<any[]>([]);
     const showEditForm = useRef<boolean>(false);
     const selectedNodeMetadata = useRef<{ nodeId: string; metadata: any; fileName: string }>();
@@ -1087,6 +1090,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 limit: 60,
                 offset: 0,
                 includeAvailableFunctions: "true",
+                ...(searchKind === "ACTIVITY_CALL" && durableAgentActivityListRef.current
+                    ? { excludeBuiltins: "true", nodeKind: "DURABLE_AGENT_ADD_ACTIVITY" }
+                    : {}),
             },
             searchKind,
         };
@@ -1532,6 +1538,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
             case "ACTIVITY_CALL":
                 // First click from node list should open searchable activity list.
                 if (sidePanelView === SidePanelView.NODE_LIST) {
+                    durableAgentActivityListRef.current = false;
                     setShowProgressIndicator(true);
                     rpcClient
                         .getBIDiagramRpcClient()
@@ -1561,6 +1568,62 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 }
 
                 // Selecting an item from activity list should open the node template form.
+                selectedClientName.current = category;
+                setShowProgressIndicator(true);
+                rpcClient
+                    .getBIDiagramRpcClient()
+                    .getNodeTemplate({
+                        position: targetRef.current.startLine,
+                        filePath: model?.fileName || fileName,
+                        id: node.codedata,
+                    })
+                    .then((response) => {
+                        selectedNodeRef.current = response.flowNode;
+                        nodeTemplateRef.current = response.flowNode;
+                        showEditForm.current = false;
+                        setSidePanelView(SidePanelView.FORM);
+                        setShowSidePanel(true);
+                    })
+                    .finally(() => {
+                        setShowProgressIndicator(false);
+                    });
+                break;
+
+            case "DURABLE_AGENT_ADD_ACTIVITY":
+                // First click from the palette opens the same searchable activity list the
+                // workflow "Call Activity" node uses, but without the prebuilt (builtin)
+                // activities — durable agents register project activities as tools.
+                if (sidePanelView === SidePanelView.NODE_LIST) {
+                    durableAgentActivityListRef.current = true;
+                    setShowProgressIndicator(true);
+                    rpcClient
+                        .getBIDiagramRpcClient()
+                        .search({
+                            position: { startLine: targetRef.current.startLine, endLine: targetRef.current.endLine },
+                            filePath: model?.fileName || fileName,
+                            queryMap: { excludeBuiltins: "true", nodeKind: "DURABLE_AGENT_ADD_ACTIVITY" },
+                            searchKind: "ACTIVITY_CALL",
+                        })
+                        .then((response) => {
+                            const panelCategories = convertFunctionCategoriesToSidePanelCategories(
+                                response.categories as Category[],
+                                FUNCTION_TYPE.REGULAR
+                            );
+                            const currentIntegrationCategory = findCurrentIntegrationCategory(panelCategories);
+                            if (currentIntegrationCategory && !currentIntegrationCategory.items.length) {
+                                currentIntegrationCategory.description = "No activities defined. Click below to create a new activity.";
+                            }
+                            setCategories(panelCategories);
+                            setSidePanelView(SidePanelView.ACTIVITY_LIST);
+                            setShowSidePanel(true);
+                        })
+                        .finally(() => {
+                            setShowProgressIndicator(false);
+                        });
+                    break;
+                }
+
+                // Selecting an activity from the list opens the registerActivities form.
                 selectedClientName.current = category;
                 setShowProgressIndicator(true);
                 rpcClient

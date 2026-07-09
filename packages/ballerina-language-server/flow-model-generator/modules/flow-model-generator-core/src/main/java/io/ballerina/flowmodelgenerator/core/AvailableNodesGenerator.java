@@ -102,7 +102,7 @@ public class AvailableNodesGenerator {
     private static final String TEST_MODULE_PREFIX = "test";
     private static final String TEST_CONFIG_ANNOTATION = "Config";
     // Set per getAvailableNodes call: inside a @workflow:DurableAgent function the palette
-    // shows only the "Configure Durable Agent" group.
+    // leads with the "Configure Durable Agent" group, followed by the normal palette.
     private boolean inDurableAgentFunction = false;
 
     public AvailableNodesGenerator(SemanticModel semanticModel, Document document, Package pkg, Path filePath) {
@@ -122,7 +122,7 @@ public class AvailableNodesGenerator {
         boolean isInWorkflowFunction = isInsideWorkflowFunction(position);
         this.inDurableAgentFunction = isInsideDurableAgentFunction(position);
 
-        if (!isInWorkflowFunction && !this.inDurableAgentFunction) {
+        if (!isInWorkflowFunction) {
             List<Category> connections = new ArrayList<>();
             List<Symbol> symbols = semanticModel.visibleSymbols(document, position);
             for (Symbol symbol : symbols) {
@@ -139,7 +139,7 @@ public class AvailableNodesGenerator {
         boolean insideTestFunction = isInsideTestFunction(position);
         List<Item> items = new ArrayList<>();
         items.addAll(getAvailableFlowNodes(position, disableBallerinaAiNodes, isInWorkflowFunction));
-        if (!isInWorkflowFunction && !this.inDurableAgentFunction) {
+        if (!isInWorkflowFunction) {
             items.addAll(LocalIndexCentral.getInstance().getFunctions());
         }
         if (insideTestFunction) {
@@ -332,11 +332,11 @@ public class AvailableNodesGenerator {
 
     private void setDefaultNodes(boolean disableBallerinaAiNodes, boolean isInWorkflowFunction) {
         if (this.inDurableAgentFunction) {
-            // Guided authoring: inside a durable agent, only the configuration nodes apply.
+            // A durable agent body is ordinary imperative code with extra capabilities:
+            // lead with the agent configuration group, then fall through to the normal palette.
             this.rootBuilder.stepIn(Category.Name.DURABLE_AGENT)
                     .items(getDurableAgentNodes())
                     .stepOut();
-            return;
         }
         if (!isInWorkflowFunction) {
             this.rootBuilder.stepIn(Category.Name.AI)
@@ -474,12 +474,8 @@ public class AvailableNodesGenerator {
         List<Item> nodes = new ArrayList<>();
         record NodeSpec(String label, String description, NodeKind kind) { }
         List<NodeSpec> specs = List.of(
-                new NodeSpec(Workflow.SET_MODEL_PROVIDER_LABEL, Workflow.SET_MODEL_PROVIDER_DESCRIPTION,
-                        NodeKind.DURABLE_AGENT_MODEL_PROVIDER),
                 new NodeSpec(Workflow.REGISTER_ACTIVITY_LABEL, Workflow.REGISTER_ACTIVITY_DESCRIPTION,
                         NodeKind.DURABLE_AGENT_ADD_ACTIVITY),
-                new NodeSpec(Workflow.REGISTER_TOOL_LABEL, Workflow.REGISTER_TOOL_DESCRIPTION,
-                        NodeKind.DURABLE_AGENT_ADD_TOOL),
                 new NodeSpec(Workflow.REGISTER_HUMAN_TASK_LABEL, Workflow.REGISTER_HUMAN_TASK_DESCRIPTION,
                         NodeKind.DURABLE_AGENT_HUMAN_TASK),
                 new NodeSpec(Workflow.RUN_DURABLE_AGENT_LABEL, Workflow.RUN_DURABLE_AGENT_DESCRIPTION,

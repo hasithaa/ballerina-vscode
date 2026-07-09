@@ -263,6 +263,9 @@ export function GeneralServiceWidget({ model, engine }: BaseNodeWidgetProps) {
     const nodeIcon = (() => {
         switch (model.type) {
             case "workflow":
+                if ((model.node as CDWorkflow)?.kind === "DURABLE_AGENT") {
+                    return <Icon name="bi-ai-agent" sx={{ fontSize: 24, width: 24, height: 24 }} />;
+                }
                 return <Icon name="bi-flowchart" sx={{ fontSize: 24, width: 24, height: 24 }} />;
             case "automation":
                 return <TaskIcon />;

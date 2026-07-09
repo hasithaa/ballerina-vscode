@@ -147,17 +147,10 @@ public class Constants {
         // Durable agent constants
         public static final String DURABLE_AGENT = "DurableAgent";
         public static final String AGENT_CONTEXT_CLASS_NAME = "AgentContext";
-        public static final String SET_MODEL_PROVIDER_METHOD_NAME = "setModelProvider";
-        public static final String SET_MODEL_PROVIDER_LABEL = "Set AI Model Provider";
-        public static final String SET_MODEL_PROVIDER_DESCRIPTION =
-                "Set the model provider used for the agent's LLM calls";
         public static final String REGISTER_ACTIVITIES_METHOD_NAME = "registerActivities";
         public static final String REGISTER_ACTIVITY_LABEL = "Add Activity";
         public static final String REGISTER_ACTIVITY_DESCRIPTION =
                 "Register a workflow activity as a durable agent tool";
-        public static final String REGISTER_TOOLS_METHOD_NAME = "registerTools";
-        public static final String REGISTER_TOOL_LABEL = "Add Tool";
-        public static final String REGISTER_TOOL_DESCRIPTION = "Register an AI tool with the durable agent";
         public static final String REGISTER_HUMAN_TASK_METHOD_NAME = "registerHumanTask";
         public static final String REGISTER_HUMAN_TASK_LABEL = "Add Human Task";
         public static final String REGISTER_HUMAN_TASK_DESCRIPTION =

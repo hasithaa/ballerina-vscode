@@ -43,6 +43,8 @@ export type CDWorkflow = {
     uuid: string;
     enableFlowModel: boolean;
     sortText: string;
+    /** "WORKFLOW" for plain workflow functions, "DURABLE_AGENT" for durable agent functions. */
+    kind?: string;
 };
 
 export type CDLocation = LineRange & {

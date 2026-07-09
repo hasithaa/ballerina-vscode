@@ -81,6 +81,16 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
     @Override
     public void setConcreteTemplateData(TemplateContext context) {
         setConcreteConstData();
+
+        // When the node comes from the activity search list, its codedata symbol is the chosen
+        // activity function — pre-select it. (The palette entry's symbol is the method name.)
+        String preSelected = "";
+        String contextSymbol = context.codedata() == null ? null : context.codedata().symbol();
+        if (contextSymbol != null && !contextSymbol.isEmpty()
+                && !REGISTER_ACTIVITIES_METHOD_NAME.equals(contextSymbol)) {
+            preSelected = contextSymbol;
+        }
+
         properties().custom()
                 .metadata()
                     .label(ACTIVITY_LABEL)
@@ -94,7 +104,7 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                 .codedata()
                     .kind(ParameterData.Kind.REQUIRED.name())
                     .stepOut()
-                .value("")
+                .value(preSelected)
                 .editable(true)
                 .stepOut()
                 .addProperty(ACTIVITY_KEY);
