@@ -312,11 +312,17 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                     continue;
                 }
                 // Action parameter: a normal expression field the user fills with workflow-local values.
+                // Use the canonical EXPRESSION type (e.g. http:RequestMessage) for the activity parameter
+                // rather than the editor type (e.g. mime:Entity[]), which may need an extra import.
+                const paramType =
+                    field.types?.find((t) => t.fieldType === "EXPRESSION")?.ballerinaType ||
+                    primary?.ballerinaType ||
+                    "";
                 paramFields.push({
                     ...field,
                     value: typeof field.value === "string" ? field.value.replace(/^\$/, "") : field.value,
                 });
-                actionParams.push({ key: field.key, type: primary?.ballerinaType || "" });
+                actionParams.push({ key: field.key, type: paramType });
             }
             actionParamsRef.current = actionParams;
 
@@ -408,10 +414,17 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
         }
 
         // Return type chosen/derived in the form (fall back to the LS-resolved type for the read-only
-        // anydata case, where the field value may not be submitted).
+        // anydata case, where the field value may not be submitted). Write it into both `type` (the
+        // result variable type) and `targetType` (the type-infer param genActivity resolves the return
+        // from) — for dependent actions genActivity reads targetType, so setting only `type` is ignored.
         const returnType = data["type"] ?? returnTypeInfoRef.current?.type;
-        if (returnType !== undefined && returnType !== "" && newProperties["type"]) {
-            newProperties["type"] = { ...newProperties["type"], value: returnType };
+        if (returnType !== undefined && returnType !== "") {
+            if (newProperties["type"]) {
+                newProperties["type"] = { ...newProperties["type"], value: String(returnType) };
+            }
+            if (newProperties["targetType"]) {
+                newProperties["targetType"] = { ...newProperties["targetType"], value: String(returnType) };
+            }
         }
 
         // Merge the parameter/return type imports onto the type property so genActivity emits them.
