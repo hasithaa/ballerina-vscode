@@ -336,7 +336,21 @@ export class SizingVisitor implements BaseVisitor {
             activities?: unknown[];
             humanTasks?: unknown[];
             events?: unknown[];
+            agentBox?: boolean;
+            agentName?: string;
         };
+
+        // The in-chain buildAndRun statement ("Build Agent") renders as a compact node like
+        // the other register statements; only the synthetic agent-box copy (agentBox flag)
+        // gets the big visualization with the side circle columns.
+        if (!nodeMetadata?.agentBox) {
+            let height = NODE_HEIGHT + NODE_BORDER_WIDTH * 2;
+            if (nodeMetadata?.agentName || node.metadata?.description) {
+                height += LABEL_HEIGHT;
+            }
+            this.setNodeSize(node, halfNodeWidth, halfNodeWidth, height);
+            return;
+        }
 
         // Left column: human task and event circles (arrows point into the box).
         const leftCircles = (nodeMetadata?.humanTasks?.length || 0) + (nodeMetadata?.events?.length || 0);

@@ -658,7 +658,9 @@ export function DiagramWrapper(param: DiagramWrapperProps) {
             );
         }
 
-        if (parentMetadata && !isResource && !isRemote && !isInitFunction) {
+        // Durable agents hide the header Configure button — the gear on the agent box
+        // opens the agent identifier side panel instead.
+        if (parentMetadata && !isResource && !isRemote && !isInitFunction && !isDurableAgent) {
             return (
                 <ActionButton id="bi-edit" appearance="secondary" onClick={() => handleEdit(fileName, currentPosition)}>
                     <Icon

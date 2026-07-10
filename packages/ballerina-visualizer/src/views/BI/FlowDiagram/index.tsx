@@ -3043,18 +3043,15 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         }
     };
 
-    // Opens the durable agent's edit form (name/description/input parameter) from the
-    // gear button in the agent box header. The agent identifier is the enclosing
-    // function name, carried in the run node's metadata.data.agentName.
+    // Opens the durable agent identifier form (name/description/input parameter) in the
+    // right side panel from the gear button in the agent box header. The agent identifier
+    // is the enclosing function name, carried in the run node's metadata.data.agentName.
     const handleOnConfigureAgentIdentifier = async (node: FlowNode) => {
-        rpcClient.getVisualizerRpcClient().openView({
-            type: EVENT_TYPE.OPEN_VIEW,
-            location: {
-                view: MACHINE_VIEW.BIDurableAgentForm,
-                identifier: (node.metadata?.data as any)?.agentName,
-                documentUri: model?.fileName,
-            },
-        });
+        selectedNodeRef.current = node;
+        showEditForm.current = true;
+        setSelectedNodeId(node.id);
+        setSidePanelView(SidePanelView.AGENT_IDENTIFIER);
+        setShowSidePanel(true);
     };
 
     const handleOnEditAgentModel = async (agentCallNode: FlowNode) => {

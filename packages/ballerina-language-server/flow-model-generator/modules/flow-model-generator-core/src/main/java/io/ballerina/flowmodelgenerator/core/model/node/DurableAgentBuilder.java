@@ -69,9 +69,10 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
     public void setConcreteTemplateData(TemplateContext context) {
         ModuleInfo workflowModuleInfo = new ModuleInfo(WORKFLOW_ORG, WORKFLOW_MODULE, WORKFLOW_MODULE, null);
         PackageUtil.pullModuleAndNotify(context.lsClientLogger(), workflowModuleInfo);
+        // The creation form asks only for a name and description; the input is always
+        // a json payload named "query".
         properties().functionNameTemplate("agent", context.getAllVisibleSymbolNames());
         WorkflowBuilder.setMandatoryProperties(this, RETURN_TYPE, "", "");
-        WorkflowBuilder.setInputTypeProperty(this, "");
     }
 
     @Override
@@ -101,7 +102,8 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
                 WORKFLOW_MODULE + ":" + AGENT_CONTEXT_CLASS_NAME, DEFAULT_AGENT_CTX_PARAM_NAME);
 
         // The input parameter is mandatory (the compiler plugin rejects agents without it);
-        // default to a generic map when the wizard leaves the input type empty.
+        // the simplified creation always generates a json payload named "query". Editing the
+        // type/name later happens through the Agent Identifier form.
         Optional<Property> inputProperty = sourceBuilder.getProperty(WorkflowBuilder.INPUT_KEY);
         String inputTypeName = inputProperty.map(p -> p.value().toString()).orElse("");
         if (inputTypeName.isEmpty()) {
@@ -124,9 +126,7 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
             String modelVar = resolveExistingModelProvider(sourceBuilder);
             // The creation description becomes the agent's initial instructions.
             String instructions = description.replace("`", "'");
-            String runStatement = "check " + DEFAULT_AGENT_CTX_PARAM_NAME
-                    + ".registerUpdateEvents(\"chat\", string);\n"
-                    + "check " + DEFAULT_AGENT_CTX_PARAM_NAME + ".buildAndRun("
+            String runStatement = "check " + DEFAULT_AGENT_CTX_PARAM_NAME + ".buildAndRun("
                     + "systemPrompt = {role: string `" + funcName + "`, instructions: string `"
                     + instructions + "`}, "
                     + "model = " + modelVar + ");";

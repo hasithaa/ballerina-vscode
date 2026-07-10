@@ -307,6 +307,10 @@ public class CodeAnalyzer extends NodeVisitor {
     // is surfaced at the top of the diagram, with a draft placeholder when absent.
     private boolean analyzedDurableAgent = false;
     private LineRange durableAgentBodyRange = null;
+    // Registered-name details per register statement, applied as metadata overrides in
+    // getFlowNodes(): NodeBuilder.build() re-runs setConcreteConstData, which resets
+    // label/description, so analyzer-time metadata writes do not survive.
+    private final Map<LineRange, String> agentRegisterDetails = new HashMap<>();
     private final Stack<NodeBuilder> flowNodeBuilderStack;
     private TypedBindingPatternNode typedBindingPatternNode;
     private static final String AI_AGENT = "ai";
@@ -994,10 +998,14 @@ public class CodeAnalyzer extends NodeVisitor {
             case DURABLE_AGENT_REGISTER_TOOL -> REGISTER_AGENT_TOOL_LABEL;
             default -> REGISTER_HUMAN_TASK_LABEL;
         };
-        // The registered name (activity/event/tool/task) is the node's secondary detail.
-        String description = nodeKind == NodeKind.DURABLE_AGENT_RUN
-                ? RUN_DURABLE_AGENT_DESCRIPTION
-                : firstArgDetail(callNode);
+        // The registered name (activity/event/tool/task) is the node's secondary detail;
+        // stashed and applied in getFlowNodes() because build() resets metadata.
+        String description = RUN_DURABLE_AGENT_DESCRIPTION;
+        if (nodeKind != NodeKind.DURABLE_AGENT_RUN) {
+            String detail = firstArgDetail(callNode);
+            description = detail;
+            agentRegisterDetails.put(callNode.lineRange(), detail);
+        }
 
         nodeBuilder
                 .symbolInfo(functionSymbol)
@@ -4723,19 +4731,33 @@ public class CodeAnalyzer extends NodeVisitor {
         if (!analyzedDurableAgent) {
             return flowNodeList;
         }
-        // The agent box is the most prominent element: surface it above the Configure
-        // Agent start node even though buildAndRun is the last statement in code.
-        List<FlowNode> reordered = new ArrayList<>(flowNodeList);
+        // The agent box is the most prominent element: a synthetic copy of the buildAndRun
+        // node renders on top, while the statement itself stays in place at the end of the
+        // chain (as the compact "Build Agent" node). Metadata overrides happen here because
+        // NodeBuilder.build() re-runs setConcreteConstData, resetting analyzer-time writes.
+        List<FlowNode> reordered = new ArrayList<>(flowNodeList.size() + 1);
         FlowNode runNode = null;
-        for (FlowNode node : reordered) {
-            if (node.codedata() != null && node.codedata().node() == NodeKind.DURABLE_AGENT_RUN) {
+        for (FlowNode node : flowNodeList) {
+            NodeKind nodeKind = node.codedata() == null ? null : node.codedata().node();
+            if (nodeKind == NodeKind.EVENT_START) {
+                reordered.add(withMetadata(node, "Configure Agent", null, null));
+            } else if (nodeKind == NodeKind.DURABLE_AGENT_RUN) {
                 runNode = node;
-                break;
+                reordered.add(withMetadata(node, "Build Agent", null, null));
+            } else if (node.codedata() != null && node.codedata().lineRange() != null
+                    && agentRegisterDetails.containsKey(node.codedata().lineRange())) {
+                reordered.add(withMetadata(node, null,
+                        agentRegisterDetails.get(node.codedata().lineRange()), null));
+            } else {
+                reordered.add(node);
             }
         }
         if (runNode != null) {
-            reordered.remove(runNode);
-            reordered.add(0, runNode);
+            // The synthetic box carries the full metadata plus an agentBox marker the
+            // widget uses to render the large agent visualization.
+            reordered.add(0, withMetadata(new FlowNode("durable-agent-box", runNode.metadata(),
+                    runNode.codedata(), runNode.returning(), runNode.branches(), runNode.properties(),
+                    runNode.diagnostics(), runNode.flags()), null, null, Boolean.TRUE));
         } else if (durableAgentBodyRange != null) {
             // No buildAndRun yet: show a draft placeholder that creates it at the body end.
             LinePosition bodyEnd = durableAgentBodyRange.endLine();
@@ -4760,6 +4782,28 @@ public class CodeAnalyzer extends NodeVisitor {
             reordered.add(0, placeholder);
         }
         return reordered;
+    }
+
+    // Rebuilds a flow node with metadata overrides (label/description/agentBox marker);
+    // null keeps the existing value.
+    private static FlowNode withMetadata(FlowNode node, String label, String description, Boolean agentBox) {
+        Metadata metadata = node.metadata();
+        Map<String, Object> data = metadata == null || metadata.data() == null
+                ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata.data());
+        if (Boolean.TRUE.equals(agentBox)) {
+            data.put("agentBox", true);
+        }
+        Metadata updated = new Metadata(
+                label != null ? label : (metadata == null ? null : metadata.label()),
+                description != null ? description : (metadata == null ? null : metadata.description()),
+                metadata == null ? null : metadata.keywords(),
+                metadata == null ? null : metadata.icon(),
+                metadata == null ? null : metadata.functionKind(),
+                data,
+                metadata == null ? null : metadata.connectors(),
+                metadata == null ? null : metadata.draft());
+        return new FlowNode(node.id(), updated, node.codedata(), node.returning(), node.branches(),
+                node.properties(), node.diagnostics(), node.flags());
     }
 
     private record CommentMetadata(String comment, LineRange position) {

@@ -151,7 +151,18 @@ public class DurableAgentRunBuilder extends CallBuilder {
         }
 
         applyAgentFormShape(this, Map.of());
-        convertModelToSelect(this, getModelProviderVariables(context));
+        List<Option> providerOptions = getModelProviderVariables(context);
+        convertModelToSelect(this, providerOptions);
+        // The model field is hidden (configured via the agent box circle); prefill it with
+        // an existing provider so a fresh buildAndRun form saves without touching it.
+        if (!providerOptions.isEmpty()) {
+            Map<String, Property> templateProps = properties().build();
+            Property model = templateProps.get(MODEL_KEY);
+            if (model != null && (model.value() == null || model.value().toString().isEmpty())) {
+                templateProps.put(MODEL_KEY,
+                        Property.Builder.copyFrom(model).value(providerOptions.get(0).value()).build());
+            }
+        }
         properties().checkError(true);
     }
 

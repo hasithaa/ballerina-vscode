@@ -44,6 +44,7 @@ import { LoaderContainer } from "../../../components/RelativeLoader/styles";
 import { ConnectionListItem } from "@wso2/wso2-platform-core";
 import { ConnectorErrorView } from "./components/ErrorContainer";
 import { NewActivityFromConnection } from "./NewActivityFromConnection";
+import { AgentIdentifierPanel } from "./AgentIdentifierPanel";
 
 const Container = styled.div`
     display: flex;
@@ -85,6 +86,7 @@ export enum SidePanelView {
     CONNECTION_SELECT = "CONNECTION_SELECT",
     CONNECTION_CREATE = "CONNECTION_CREATE",
     AGENT_MEMORY_MANAGER = "AGENT_MEMORY_MANAGER",
+    AGENT_IDENTIFIER = "AGENT_IDENTIFIER",
     AGENT_CONFIG = "AGENT_CONFIG",
     AGENT_LIST = "AGENT_LIST",
     ERROR = "ERROR",
@@ -396,6 +398,16 @@ export function PanelManager(props: PanelManagerProps) {
 
             case SidePanelView.AGENT_MEMORY_MANAGER:
                 return <MemoryManagerConfig agentNode={parentNode} memoryNode={selectedNode} onSave={onClose} />;
+
+            case SidePanelView.AGENT_IDENTIFIER:
+                return (
+                    <AgentIdentifierPanel
+                        agentName={((selectedNode?.metadata?.data as NodeMetadata & { agentName?: string })?.agentName) || ""}
+                        fileName={fileName}
+                        projectPath={projectPath}
+                        onSave={onSaveAndRefresh ?? onClose}
+                    />
+                );
 
             case SidePanelView.FUNCTION_LIST:
                 return (

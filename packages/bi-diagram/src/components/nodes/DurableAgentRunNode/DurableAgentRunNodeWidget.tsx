@@ -305,6 +305,7 @@ type DurableAgentNodeMetadata = NodeMetadata & {
     humanTasks?: ToolData[];
     events?: ToolData[];
     agentName?: string;
+    agentBox?: boolean;
 };
 
 type AgentCapability = ToolData & {
@@ -451,6 +452,10 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
     const disabled = model.node.suggested;
     const isDraft = model.node.metadata?.draft === true;
     const nodeMetadata = model?.node?.metadata?.data as DurableAgentNodeMetadata | undefined;
+    // The big agent visualization is rendered only for the synthetic agent-box node
+    // (metadata.data.agentBox) or the draft placeholder; the in-chain buildAndRun
+    // statement renders as a compact node like the other register statements.
+    const isAgentBox = nodeMetadata?.agentBox === true;
     // Agent identifier (the enclosing function name) is the box title; fall back to the label.
     const nodeTitle = nodeMetadata?.agentName || model.node.metadata?.label || "Durable Agent";
     const hasError = nodeHasError(model.node);
@@ -507,6 +512,34 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
         return <Icon name="bi-function" sx={{ fontSize: "24px" }} />;
     };
 
+    const menuPortal = isMenuOpen && menuPos && createPortal(
+        <div
+            style={{
+                position: "fixed",
+                top: menuPos.top,
+                left: menuPos.left,
+                zIndex: 1300,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                borderRadius: 0,
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+        >
+            <Menu>
+                <>
+                    {menuItems.map((item) => (
+                        <MenuItem key={item.id} item={item} />
+                    ))}
+                    <BreakpointMenu
+                        hasBreakpoint={hasBreakpoint}
+                        onAddBreakpoint={onAddBreakpoint}
+                        onRemoveBreakpoint={onRemoveBreakpoint}
+                    />
+                </>
+            </Menu>
+        </div>,
+        document.body
+    );
+
     // Draft placeholder: the enclosing function has no buildAndRun statement yet. Render a
     // dashed empty-state box (no model/capability circles) whose click routes through the
     // normal onClick/onNodeSelect path — the node's codedata already carries isNew and the
@@ -546,6 +579,68 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
                             </NodeStyles.InstructionsRow>
                         )}
                     </NodeStyles.Column>
+                    <NodeStyles.BottomPortWidget port={model.getPort("out")!} engine={engine} />
+                </NodeStyles.Box>
+            </NodeStyles.Node>
+        );
+    }
+
+    // In-chain buildAndRun statement ("Build Agent"): compact node styled like the other
+    // register statements — title from the label, the agent identifier as the second line.
+    if (!isAgentBox) {
+        return (
+            <NodeStyles.Node data-testid="durable-agent-run-compact-node" readOnly={readOnly}>
+                <NodeStyles.Box
+                    disabled={disabled}
+                    hovered={isBoxHovered}
+                    hasError={hasError}
+                    readOnly={readOnly}
+                    isActiveBreakpoint={isActiveBreakpoint}
+                    isSelected={isSelected}
+                    onMouseEnter={() => setIsBoxHovered(true)}
+                    onMouseLeave={() => setIsBoxHovered(false)}
+                    onContextMenu={!readOnly ? handleOnContextMenu : undefined}
+                >
+                    {hasBreakpoint && (
+                        <div
+                            data-testid={isActiveBreakpoint ? "breakpoint-indicator-diagram-active" : "breakpoint-indicator-diagram"}
+                            style={{
+                                position: "absolute",
+                                left: -5,
+                                width: 15,
+                                height: 15,
+                                borderRadius: "50%",
+                                backgroundColor: "red",
+                                zIndex: 2,
+                            }}
+                        />
+                    )}
+                    <NodeStyles.TopPortWidget port={model.getPort("in")!} engine={engine} />
+                    <NodeStyles.Row readOnly={readOnly}>
+                        <NodeStyles.Icon onClick={handleOnClick}>
+                            <NodeIcon type={model.node.codedata.node} size={24} />
+                        </NodeStyles.Icon>
+                        <NodeStyles.Row readOnly={readOnly}>
+                            <NodeStyles.Header onClick={handleOnClick}>
+                                <NodeStyles.Title>{model.node.metadata?.label || "Build Agent"}</NodeStyles.Title>
+                                <NodeStyles.Description>
+                                    {(nodeMetadata?.agentName || model.node.metadata?.description) as ReactNode}
+                                </NodeStyles.Description>
+                            </NodeStyles.Header>
+                            <NodeStyles.ActionButtonGroup>
+                                {hasError && <DiagnosticsPopUp node={model.node} engine={engine} />}
+                                <NodeStyles.MenuButton
+                                    ref={setMenuButtonElement}
+                                    buttonSx={readOnly ? { cursor: "not-allowed" } : {}}
+                                    appearance="icon"
+                                    onClick={handleOnMenuClick}
+                                >
+                                    <MoreVertIcon />
+                                </NodeStyles.MenuButton>
+                            </NodeStyles.ActionButtonGroup>
+                        </NodeStyles.Row>
+                        {menuPortal}
+                    </NodeStyles.Row>
                     <NodeStyles.BottomPortWidget port={model.getPort("out")!} engine={engine} />
                 </NodeStyles.Box>
             </NodeStyles.Node>
@@ -704,33 +799,7 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
                                 </NodeStyles.MenuButton>
                             </NodeStyles.ActionButtonGroup>
                         </NodeStyles.Row>
-                        {isMenuOpen && menuPos && createPortal(
-                            <div
-                                style={{
-                                    position: "fixed",
-                                    top: menuPos.top,
-                                    left: menuPos.left,
-                                    zIndex: 1300,
-                                    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-                                    borderRadius: 0,
-                                }}
-                                onMouseDown={(e) => e.stopPropagation()}
-                            >
-                                <Menu>
-                                    <>
-                                        {menuItems.map((item) => (
-                                            <MenuItem key={item.id} item={item} />
-                                        ))}
-                                        <BreakpointMenu
-                                            hasBreakpoint={hasBreakpoint}
-                                            onAddBreakpoint={onAddBreakpoint}
-                                            onRemoveBreakpoint={onRemoveBreakpoint}
-                                        />
-                                    </>
-                                </Menu>
-                            </div>,
-                            document.body
-                        )}
+                        {menuPortal}
                     </NodeStyles.Row>
 
                     {
