@@ -111,6 +111,7 @@ export interface DiagramContextState {
         onAddActivity?: (node: FlowNode) => void;
         onAddHumanTask?: (node: FlowNode) => void;
         onEditCapability?: (node: FlowNode, capability: any) => void;
+        onConfigureAgent?: (node: FlowNode) => void;
     };
     aiNodes?: {
         onModelSelect: (node: FlowNode) => void;

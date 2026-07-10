@@ -45,7 +45,7 @@ import { useDiagramContext } from "../../DiagramContext";
 import { BaseNodeModel } from "./BaseNodeModel";
 import { ELineRange, FlowNode } from "@wso2/ballerina-core";
 import { DiagnosticsPopUp } from "../../DiagnosticsPopUp";
-import { getNodeTitle, isWorkflowNode, nodeHasError } from "../../../utils/node";
+import { getNodeTitle, isDurableAgentRegisterNode, isWorkflowNode, nodeHasError } from "../../../utils/node";
 import { BreakpointMenu } from "../../BreakNodeMenu/BreakNodeMenu";
 import { NodeNoteChip } from "../../NodeNoteChip";
 
@@ -442,6 +442,12 @@ export function BaseNodeWidget(props: BaseNodeWidgetProps) {
         model.node.properties?.msg?.value
     ) {
         nodeDescription = model.node.properties.msg.value;
+    }
+
+    // Durable-agent register statements show the registered name (metadata.description)
+    // as the second line, reusing the variable-name slot.
+    if (isDurableAgentRegisterNode(model.node)) {
+        nodeDescription = model.node.metadata?.description;
     }
 
     const hasError = nodeHasError(model.node);

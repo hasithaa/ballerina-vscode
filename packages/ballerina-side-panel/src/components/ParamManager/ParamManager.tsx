@@ -57,6 +57,7 @@ export interface ParamManagerProps {
     readonly?: boolean;
     selectedNode?: NodeKind;
     setSubComponentEnabled?: (isAdding: boolean) => void;
+    hideAddButton?: boolean;
 }
 
 const AddButtonWrapper = styled.div`
@@ -156,6 +157,7 @@ export function ParamManagerEditor(props: ParamManagerEditorProps) {
                         <ParamManager
                             propertyKey={field.key}
                             paramConfigs={field.paramManagerProps}
+                            hideAddButton={field.addNewButton === false}
                             openRecordEditor={openRecordEditor}
                             onChange={async (config: ParamConfig) => {
                                 onChange(config.paramValues);
@@ -209,7 +211,7 @@ export function ParamManagerEditor(props: ParamManagerEditorProps) {
 }
 
 export function ParamManager(props: ParamManagerProps) {
-    const { propertyKey, paramConfigs, readonly, onChange, openRecordEditor, selectedNode, setSubComponentEnabled } = props;
+    const { propertyKey, paramConfigs, readonly, onChange, openRecordEditor, selectedNode, setSubComponentEnabled, hideAddButton } = props;
     const { rpcClient } = useRpcContext();
 
     const [editingSegmentId, setEditingSegmentId] = useState<number>(-1);
@@ -369,7 +371,7 @@ export function ParamManager(props: ParamManagerProps) {
     return (
         <div>
             {paramComponents}
-            {(editingSegmentId === -1) && (
+            {(editingSegmentId === -1) && !hideAddButton && (
                 <AddButtonWrapper>
                     <LinkButton sx={readonly && { color: "var(--vscode-badge-background)" }} onClick={!readonly && onAddClick} >
                         <Codicon name="add" />

@@ -3043,6 +3043,20 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         }
     };
 
+    // Opens the durable agent's edit form (name/description/input parameter) from the
+    // gear button in the agent box header. The agent identifier is the enclosing
+    // function name, carried in the run node's metadata.data.agentName.
+    const handleOnConfigureAgentIdentifier = async (node: FlowNode) => {
+        rpcClient.getVisualizerRpcClient().openView({
+            type: EVENT_TYPE.OPEN_VIEW,
+            location: {
+                view: MACHINE_VIEW.BIDurableAgentForm,
+                identifier: (node.metadata?.data as any)?.agentName,
+                documentUri: model?.fileName,
+            },
+        });
+    };
+
     const handleOnEditAgentModel = async (agentCallNode: FlowNode) => {
         // The durable agent run node holds its own `model` property; configure it directly.
         if (agentCallNode.codedata?.node === "DURABLE_AGENT_RUN") {
@@ -3503,6 +3517,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 onAddActivity: handleOnAddDurableActivity,
                 onAddHumanTask: handleOnAddDurableHumanTask,
                 onEditCapability: handleOnEditDurableCapability,
+                onConfigureAgent: handleOnConfigureAgentIdentifier,
                 onAddMcpServer: handleOnAddMcpServer,
                 onSelectTool: handleOnSelectTool,
                 onSelectMcpToolkit: handleOnSelectMcpToolkit,

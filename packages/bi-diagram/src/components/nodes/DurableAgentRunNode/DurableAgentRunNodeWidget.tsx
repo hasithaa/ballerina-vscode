@@ -304,6 +304,7 @@ type DurableAgentNodeMetadata = NodeMetadata & {
     activities?: ToolData[];
     humanTasks?: ToolData[];
     events?: ToolData[];
+    agentName?: string;
 };
 
 type AgentCapability = ToolData & {
@@ -406,6 +407,15 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
         setMenuPos(null);
     };
 
+    const onConfigureAgentClick = (event: React.MouseEvent<HTMLElement | SVGSVGElement>) => {
+        if (readOnly) {
+            return;
+        }
+        event.stopPropagation();
+        agentNode?.onConfigureAgent?.(model.node);
+        setMenuPos(null);
+    };
+
     const onCapabilityClick = (item: CapabilityItem) => {
         if (readOnly) {
             return;
@@ -439,9 +449,11 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
     ];
 
     const disabled = model.node.suggested;
-    const nodeTitle = model.node.metadata.label || "Durable Agent";
+    const isDraft = model.node.metadata?.draft === true;
+    const nodeMetadata = model?.node?.metadata?.data as DurableAgentNodeMetadata | undefined;
+    // Agent identifier (the enclosing function name) is the box title; fall back to the label.
+    const nodeTitle = nodeMetadata?.agentName || model.node.metadata?.label || "Durable Agent";
     const hasError = nodeHasError(model.node);
-    const nodeMetadata = model?.node?.metadata?.data as DurableAgentNodeMetadata;
     const nodeModelIconUrl = nodeMetadata?.model?.path;
 
     const sanitizedAgent = nodeMetadata?.agent ? sanitizeAgentData(nodeMetadata.agent) : undefined;
@@ -494,6 +506,51 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
         }
         return <Icon name="bi-function" sx={{ fontSize: "24px" }} />;
     };
+
+    // Draft placeholder: the enclosing function has no buildAndRun statement yet. Render a
+    // dashed empty-state box (no model/capability circles) whose click routes through the
+    // normal onClick/onNodeSelect path — the node's codedata already carries isNew and the
+    // insertion line range, so the default edit path opens the buildAndRun creation form.
+    if (isDraft) {
+        return (
+            <NodeStyles.Node data-testid="durable-agent-run-draft-node" readOnly={readOnly}>
+                <NodeStyles.Box
+                    disabled={true}
+                    hovered={isBoxHovered}
+                    hasError={hasError}
+                    readOnly={readOnly}
+                    isActiveBreakpoint={isActiveBreakpoint}
+                    isSelected={isSelected}
+                    onMouseEnter={() => setIsBoxHovered(true)}
+                    onMouseLeave={() => setIsBoxHovered(false)}
+                    onClick={handleOnClick}
+                    title={model.node.metadata?.label || "Define Durable Agent"}
+                >
+                    <NodeStyles.TopPortWidget port={model.getPort("in")!} engine={engine} />
+                    <NodeStyles.Column style={{ height: `${model.node.viewState?.ch}px` }}>
+                        <NodeStyles.Row readOnly={readOnly}>
+                            <NodeStyles.Icon>
+                                <NodeIcon type={model.node.codedata.node} size={24} />
+                            </NodeStyles.Icon>
+                            <NodeStyles.Header>
+                                <NodeStyles.Title>
+                                    {model.node.metadata?.label || "Define Durable Agent"}
+                                </NodeStyles.Title>
+                            </NodeStyles.Header>
+                        </NodeStyles.Row>
+                        {model.node.metadata?.description && (
+                            <NodeStyles.InstructionsRow readOnly={readOnly}>
+                                <NodeStyles.InstructionsPlaceholder>
+                                    {model.node.metadata.description}
+                                </NodeStyles.InstructionsPlaceholder>
+                            </NodeStyles.InstructionsRow>
+                        )}
+                    </NodeStyles.Column>
+                    <NodeStyles.BottomPortWidget port={model.getPort("out")!} engine={engine} />
+                </NodeStyles.Box>
+            </NodeStyles.Node>
+        );
+    }
 
     return (
         <NodeStyles.Node data-testid="durable-agent-run-node" readOnly={readOnly}>
@@ -629,6 +686,14 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
                             </NodeStyles.Header>
                             <NodeStyles.ActionButtonGroup>
                                 {hasError && <DiagnosticsPopUp node={model.node} engine={engine} />}
+                                <NodeStyles.MenuButton
+                                    buttonSx={readOnly ? { cursor: "not-allowed" } : {}}
+                                    appearance="icon"
+                                    onClick={onConfigureAgentClick}
+                                    tooltip="Configure Agent Identifier"
+                                >
+                                    <Icon name="bi-settings" sx={{ width: 16, height: 16 }} iconSx={{ fontSize: 16 }} />
+                                </NodeStyles.MenuButton>
                                 <NodeStyles.MenuButton
                                     ref={setMenuButtonElement}
                                     buttonSx={readOnly ? { cursor: "not-allowed" } : {}}

@@ -320,6 +320,15 @@ export class SizingVisitor implements BaseVisitor {
 
     endVisitDurableAgentRun(node: FlowNode, parent?: FlowNode): void {
         if (!this.validateNode(node)) return;
+
+        // Draft placeholder ("Define Durable Agent") renders as a plain dashed box
+        // without the side circle columns, so no side space is reserved.
+        if (node.metadata?.draft) {
+            const halfWidth = NODE_WIDTH / 2;
+            this.setNodeSize(node, halfWidth, halfWidth, NODE_HEIGHT + LABEL_HEIGHT * 2);
+            return;
+        }
+
         const halfNodeWidth = NODE_WIDTH / 2;
         const sideColumnWidth = NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT + LABEL_WIDTH;
 

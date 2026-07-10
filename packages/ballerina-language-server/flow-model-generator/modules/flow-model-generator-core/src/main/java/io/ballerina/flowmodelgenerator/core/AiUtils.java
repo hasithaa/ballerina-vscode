@@ -302,7 +302,8 @@ public class AiUtils {
                 original.metadata().icon(),
                 original.metadata().functionKind(),
                 original.metadata().data(),
-                original.metadata().connectors()
+                original.metadata().connectors(),
+                original.metadata().draft()
         );
 
         return new Property(

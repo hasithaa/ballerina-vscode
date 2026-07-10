@@ -35,7 +35,6 @@ import java.util.Optional;
 
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.AGENT_CONTEXT_CLASS_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.DEFAULT_AGENT_CTX_PARAM_NAME;
-import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.DEFAULT_INPUT_PARAM_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_MODULE;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_ORG;
 
@@ -51,7 +50,10 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
     public static final String LABEL = "Durable Agent";
     public static final String DESCRIPTION = "Define a durable AI agent backed by a workflow";
 
-    private static final String DEFAULT_INPUT_TYPE = "map<anydata>";
+    // The simplified creation form only asks for a name and description; the input
+    // defaults to a json payload bound to a variable named "query".
+    private static final String DEFAULT_INPUT_TYPE = "json";
+    private static final String DEFAULT_INPUT_NAME = "query";
     private static final String RETURN_TYPE = "error?";
 
     @Override
@@ -106,7 +108,7 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
             inputTypeName = DEFAULT_INPUT_TYPE;
         }
         sourceBuilder.token().keyword(SyntaxKind.COMMA_TOKEN);
-        WorkflowBuilder.generateParameter(sourceBuilder, inputTypeName, DEFAULT_INPUT_PARAM_NAME);
+        WorkflowBuilder.generateParameter(sourceBuilder, inputTypeName, DEFAULT_INPUT_NAME);
 
         sourceBuilder.token()
                 .keyword(SyntaxKind.CLOSE_PAREN_TOKEN)
@@ -120,10 +122,13 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
             // has one; otherwise fall back to `wso2ModelProvider`, which the creation wizard
             // creates only when no provider exists yet.
             String modelVar = resolveExistingModelProvider(sourceBuilder);
+            // The creation description becomes the agent's initial instructions.
+            String instructions = description.replace("`", "'");
             String runStatement = "check " + DEFAULT_AGENT_CTX_PARAM_NAME
                     + ".registerUpdateEvents(\"chat\", string);\n"
                     + "check " + DEFAULT_AGENT_CTX_PARAM_NAME + ".buildAndRun("
-                    + "systemPrompt = {role: string `" + funcName + "`, instructions: string ``}, "
+                    + "systemPrompt = {role: string `" + funcName + "`, instructions: string `"
+                    + instructions + "`}, "
                     + "model = " + modelVar + ");";
             sourceBuilder
                     .token()

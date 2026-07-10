@@ -174,7 +174,9 @@ public class AvailableNodesGenerator {
                 new NodeSpec(Workflow.REGISTER_HUMAN_TASK_LABEL, Workflow.REGISTER_HUMAN_TASK_DESCRIPTION,
                         NodeKind.DURABLE_AGENT_HUMAN_TASK),
                 new NodeSpec(Workflow.REGISTER_AGENT_TOOL_LABEL, Workflow.REGISTER_AGENT_TOOL_DESCRIPTION,
-                        NodeKind.DURABLE_AGENT_REGISTER_TOOL));
+                        NodeKind.DURABLE_AGENT_REGISTER_TOOL),
+                new NodeSpec(Workflow.RUN_DURABLE_AGENT_LABEL, Workflow.RUN_DURABLE_AGENT_DESCRIPTION,
+                        NodeKind.DURABLE_AGENT_RUN));
         for (NodeSpec spec : specs) {
             nodes.add(new AvailableNode(
                     new Metadata.Builder<>(null)

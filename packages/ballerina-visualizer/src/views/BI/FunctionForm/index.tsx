@@ -21,7 +21,7 @@ import { CodeData, FunctionNode, LineRange, NodeKind, NodeProperties, NodeProper
 import { Button, Codicon, Typography, View, ViewContent } from "@wso2/ui-toolkit";
 import styled from "@emotion/styled";
 import { useRpcContext } from "@wso2/ballerina-rpc-client";
-import { FormField, FormImports, FormValues } from "@wso2/ballerina-side-panel";
+import { FormField, FormImports, FormValues, Parameter } from "@wso2/ballerina-side-panel";
 import ArtifactForm from "../Forms/ArtifactForm";
 import { TitleBar } from "../../../components/TitleBar";
 import { TopNavigationBar } from "../../../components/TopNavigationBar";
@@ -328,6 +328,35 @@ export function FunctionForm(props: FunctionFormProps) {
                     }
                     if (field.key === "parameters") {
                         field.documentation = "Define the inputs for the agent tool. These are the parameters that AI agents will use when calling this tool.";
+                    }
+                });
+            }
+
+            // Durable agent form (create and edit): keep it minimal — only Name, Description
+            // and the input parameter (type + name). Hide the Public checkbox, the return type
+            // fields, the workflow:AgentContext context parameter row and the Add Parameter action.
+            if (isDurableAgent) {
+                const isContextParam = (param: Parameter) =>
+                    typeof param?.formValues?.type === "string" &&
+                    param.formValues.type.replace(/\s/g, "").endsWith("AgentContext");
+                fields.forEach((field) => {
+                    if (field.key === "isPublic" || field.key === "type" || field.key === "typeDescription") {
+                        field.hidden = true;
+                    }
+                    if (field.key === "parameters") {
+                        field.addNewButton = false;
+                        field.paramManagerProps?.paramValues?.forEach((param) => {
+                            if (isContextParam(param)) {
+                                param.hidden = true;
+                            }
+                        });
+                        if (Array.isArray(field.value)) {
+                            (field.value as Parameter[]).forEach((param) => {
+                                if (isContextParam(param)) {
+                                    param.hidden = true;
+                                }
+                            });
+                        }
                     }
                 });
             }

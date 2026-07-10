@@ -134,6 +134,7 @@ import io.ballerina.flowmodelgenerator.core.model.CommentProperty;
 import io.ballerina.flowmodelgenerator.core.model.FlowNode;
 import io.ballerina.flowmodelgenerator.core.model.FormBuilder;
 import io.ballerina.flowmodelgenerator.core.model.ItemOption;
+import io.ballerina.flowmodelgenerator.core.model.Metadata;
 import io.ballerina.flowmodelgenerator.core.model.NodeBuilder;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Option;
@@ -302,6 +303,10 @@ public class CodeAnalyzer extends NodeVisitor {
     // State fields
     private NodeBuilder nodeBuilder;
     private final List<FlowNode> flowNodeList;
+    // Set while analyzing a @workflow:DurableAgent function: the agent box (buildAndRun)
+    // is surfaced at the top of the diagram, with a draft placeholder when absent.
+    private boolean analyzedDurableAgent = false;
+    private LineRange durableAgentBodyRange = null;
     private final Stack<NodeBuilder> flowNodeBuilderStack;
     private TypedBindingPatternNode typedBindingPatternNode;
     private static final String AI_AGENT = "ai";
@@ -390,6 +395,8 @@ public class CodeAnalyzer extends NodeVisitor {
         // agent's capabilities are registered before the terminal buildAndRun call.
         if (kind == FunctionKind.DURABLE_AGENT) {
             nodeBuilder.metadata().label("Configure Agent");
+            this.analyzedDurableAgent = true;
+            this.durableAgentBodyRange = functionBodyNode.lineRange();
         }
 
         nodeBuilder.metadata()
@@ -1079,6 +1086,16 @@ public class CodeAnalyzer extends NodeVisitor {
                 nodeBuilder.metadata().addData("model",
                         new ModelData(modelArg.toString().trim(), null, ""));
             }
+        }
+
+        // The enclosing function name is the agent's identifier shown on the box header.
+        NonTerminalNode enclosing = callNode.parent();
+        while (enclosing != null && !(enclosing instanceof FunctionDefinitionNode)) {
+            enclosing = enclosing.parent();
+        }
+        if (enclosing != null) {
+            nodeBuilder.metadata().addData("agentName",
+                    ((FunctionDefinitionNode) enclosing).functionName().text());
         }
 
         // Capabilities are registered on the context anywhere in the enclosing agent
@@ -4703,7 +4720,46 @@ public class CodeAnalyzer extends NodeVisitor {
     }
 
     public List<FlowNode> getFlowNodes() {
-        return flowNodeList;
+        if (!analyzedDurableAgent) {
+            return flowNodeList;
+        }
+        // The agent box is the most prominent element: surface it above the Configure
+        // Agent start node even though buildAndRun is the last statement in code.
+        List<FlowNode> reordered = new ArrayList<>(flowNodeList);
+        FlowNode runNode = null;
+        for (FlowNode node : reordered) {
+            if (node.codedata() != null && node.codedata().node() == NodeKind.DURABLE_AGENT_RUN) {
+                runNode = node;
+                break;
+            }
+        }
+        if (runNode != null) {
+            reordered.remove(runNode);
+            reordered.add(0, runNode);
+        } else if (durableAgentBodyRange != null) {
+            // No buildAndRun yet: show a draft placeholder that creates it at the body end.
+            LinePosition bodyEnd = durableAgentBodyRange.endLine();
+            LineRange insertAtEnd = LineRange.from(durableAgentBodyRange.fileName(), bodyEnd, bodyEnd);
+            FlowNode placeholder = new FlowNode(
+                    "durable-agent-placeholder",
+                    new Metadata.Builder<>(null)
+                            .label("Define Durable Agent")
+                            .description("Configure the agent's prompt and model, then run it")
+                            .draft(true)
+                            .build(),
+                    new Codedata.Builder<>(null)
+                            .node(NodeKind.DURABLE_AGENT_RUN)
+                            .org(Constants.Workflow.WORKFLOW_ORG)
+                            .module(Constants.Workflow.WORKFLOW_MODULE)
+                            .object(Constants.Workflow.AGENT_CONTEXT_CLASS_NAME)
+                            .symbol(Constants.Workflow.RUN_DURABLE_AGENT_METHOD_NAME)
+                            .lineRange(insertAtEnd)
+                            .isNew(true)
+                            .build(),
+                    false, new ArrayList<>(), new HashMap<>(), null, 0);
+            reordered.add(0, placeholder);
+        }
+        return reordered;
     }
 
     private record CommentMetadata(String comment, LineRange position) {
