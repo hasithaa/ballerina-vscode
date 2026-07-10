@@ -24,10 +24,8 @@ import { css } from "@emotion/react";
 import { DiagramEngine, PortWidget } from "@projectstorm/react-diagrams-core";
 import { DurableAgentRunNodeModel } from "./DurableAgentRunNodeModel";
 import {
-    AGENT_NODE_ADD_TOOL_BUTTON_WIDTH,
     AGENT_NODE_TOOL_GAP,
     AGENT_NODE_TOOL_SECTION_GAP,
-    CANVAS_BG_COLOR,
     DRAFT_NODE_BORDER_WIDTH,
     NODE_BG_BREAKPOINT_COLOR,
     NODE_BORDER_ERROR_COLOR,
@@ -292,38 +290,6 @@ export namespace NodeStyles {
     export const MenuButton = styled(Button)`
         border-radius: 5px;
     `;
-
-    export const AddItemContainer = styled.div`
-        display: flex;
-        flex-direction: row;
-        gap: 8px;
-        width: 100%;
-        border-bottom: 1px dashed ${NODE_BORDER_COLOR};
-        padding-bottom: 8px;
-        z-index: 2;
-    `;
-
-    export const AddItemButton = styled.div<{ readOnly: boolean }>`
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex: 1;
-        margin: 8px 0;
-        padding: 8px 0;
-        border: 1px solid ${NODE_BORDER_COLOR};
-        border-radius: 4px;
-        background-color: transparent;
-        color: ${NODE_TEXT_COLOR};
-        font-size: 13px;
-        font-family: "GilmerRegular";
-        white-space: nowrap;
-        cursor: ${(props: { readOnly: boolean }) => (props.readOnly ? "default" : "pointer")};
-        &:hover {
-            background-color: ${CANVAS_BG_COLOR};
-            border-color: ${(props: { readOnly: boolean }) =>
-            props.readOnly ? NODE_BORDER_COLOR : NODE_BORDER_SELECTED_COLOR};
-        }
-    `;
 }
 
 interface DurableAgentRunNodeWidgetProps {
@@ -337,6 +303,7 @@ export interface NodeWidgetProps extends Omit<DurableAgentRunNodeWidgetProps, "c
 type DurableAgentNodeMetadata = NodeMetadata & {
     activities?: ToolData[];
     humanTasks?: ToolData[];
+    events?: ToolData[];
 };
 
 type AgentCapability = ToolData & {
@@ -346,7 +313,7 @@ type AgentCapability = ToolData & {
 
 type CapabilityItem = {
     data: AgentCapability;
-    kind: "tool" | "activity" | "humanTask";
+    kind: "tool" | "activity" | "humanTask" | "event";
 };
 
 export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps) {
@@ -439,35 +406,11 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
         setMenuPos(null);
     };
 
-    const onAddToolClick = () => {
-        if (readOnly) {
-            return;
-        }
-        agentNode?.onAddTool?.(model.node);
-        setMenuPos(null);
-    };
-
     const onCapabilityClick = (item: CapabilityItem) => {
         if (readOnly) {
             return;
         }
         agentNode?.onEditCapability?.(model.node, { ...item.data, type: item.kind });
-    };
-
-    const onAddActivityClick = () => {
-        if (readOnly) {
-            return;
-        }
-        agentNode?.onAddActivity?.(model.node);
-        setMenuPos(null);
-    };
-
-    const onAddHumanTaskClick = () => {
-        if (readOnly) {
-            return;
-        }
-        agentNode?.onAddHumanTask?.(model.node);
-        setMenuPos(null);
     };
 
     const handleOnMenuClick = (event: React.MouseEvent<HTMLElement | SVGSVGElement>) => {
@@ -503,18 +446,31 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
 
     const sanitizedAgent = nodeMetadata?.agent ? sanitizeAgentData(nodeMetadata.agent) : undefined;
 
-    // Capability circles rendered on the right side: AI tools, activities and human tasks.
-    const capabilityItems: CapabilityItem[] = [
+    // Capability circles rendered on the right side: AI tools and activities (below the model circle).
+    const rightItems: CapabilityItem[] = [
         ...(nodeMetadata?.tools || []).map((tool: ToolData): CapabilityItem => ({ data: tool, kind: "tool" })),
         ...(nodeMetadata?.activities || []).map((activity: AgentCapability): CapabilityItem => ({ data: activity, kind: "activity" })),
-        ...(nodeMetadata?.humanTasks || []).map((humanTask: AgentCapability): CapabilityItem => ({ data: humanTask, kind: "humanTask" })),
     ];
 
-    let containerHeight =
-        NODE_HEIGHT + AGENT_NODE_TOOL_SECTION_GAP + AGENT_NODE_ADD_TOOL_BUTTON_WIDTH + AGENT_NODE_TOOL_GAP * 2;
-    if (capabilityItems.length > 0) {
-        containerHeight += capabilityItems.length * (NODE_HEIGHT + AGENT_NODE_TOOL_GAP);
-    }
+    // Capability circles rendered on the left side: human tasks and events (arrows point into the box).
+    const leftItems: CapabilityItem[] = [
+        ...(nodeMetadata?.humanTasks || []).map((humanTask: AgentCapability): CapabilityItem => ({ data: humanTask, kind: "humanTask" })),
+        ...(nodeMetadata?.events || []).map((event: AgentCapability): CapabilityItem => ({ data: event, kind: "event" })),
+    ];
+
+    // Row 0 is the model circle on the right (and the first left item, if any).
+    const numberOfRows = Math.max(leftItems.length, rightItems.length + 1);
+    const containerHeight =
+        NODE_HEIGHT +
+        AGENT_NODE_TOOL_SECTION_GAP +
+        AGENT_NODE_TOOL_GAP * 2 +
+        (numberOfRows - 1) * (NODE_HEIGHT + AGENT_NODE_TOOL_GAP);
+
+    // Vertical offset of a capability row; row 0 aligns with the model circle.
+    const rowOffsetY = (row: number) =>
+        row === 0 ? 0 : row * (NODE_HEIGHT + AGENT_NODE_TOOL_GAP) + AGENT_NODE_TOOL_SECTION_GAP;
+
+    const sideSvgWidth = NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT + LABEL_WIDTH + 10;
 
     const renderCapabilityIcon = (item: CapabilityItem) => {
         if (item.kind === "activity") {
@@ -522,6 +478,9 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
         }
         if (item.kind === "humanTask") {
             return <Icon name="bi-user" sx={{ fontSize: "24px" }} />;
+        }
+        if (item.kind === "event") {
+            return <Icon name="bi-arrow-outward" sx={{ fontSize: "24px" }} />;
         }
         if (item.data.path) {
             return (
@@ -538,6 +497,97 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
 
     return (
         <NodeStyles.Node data-testid="durable-agent-run-node" readOnly={readOnly}>
+            {leftItems.length > 0 && (
+                <svg
+                    width={sideSvgWidth}
+                    height={model.node.viewState?.ch}
+                    viewBox={`0 0 300 ${containerHeight}`}
+                    style={{ marginRight: "-10px", position: "relative", zIndex: 1 }}
+                >
+                    {/* circles for human tasks and events — dotted arrows point into the agent box */}
+                    {leftItems.map((item: CapabilityItem, index: number) => {
+                        const itemName = item.data.name;
+                        return (
+                            <g key={`${item.kind}-${itemName}-${index}`} transform={`translate(0, ${rowOffsetY(index)})`}>
+                                <circle
+                                    cx="220"
+                                    cy="24"
+                                    r="22"
+                                    fill={NODE_BG_COLOR}
+                                    stroke={NODE_BORDER_COLOR}
+                                    strokeWidth={1.5}
+                                    strokeDasharray={disabled ? "5 5" : "none"}
+                                    opacity={disabled ? 0.7 : 1}
+                                    onClick={() => onCapabilityClick(item)}
+                                    css={css`
+                                        cursor: ${readOnly ? "default" : "pointer"};
+                                        transition: stroke 0.4s ease-out;
+                                        &:hover {
+                                            stroke: ${readOnly ? NODE_BORDER_COLOR : NODE_BORDER_SELECTED_COLOR};
+                                        }
+                                    `}
+                                >
+                                    <title>{itemName}</title>
+                                </circle>
+
+                                <foreignObject
+                                    x="208"
+                                    y="12"
+                                    width="44"
+                                    height="44"
+                                    fill={NODE_TEXT_COLOR}
+                                    style={{ pointerEvents: "none" }}
+                                >
+                                    <div className="connector-icon">{renderCapabilityIcon(item)}</div>
+                                </foreignObject>
+
+                                <text
+                                    x="190"
+                                    y="28"
+                                    textAnchor="end"
+                                    fill={NODE_TEXT_COLOR}
+                                    fontSize="14px"
+                                    fontFamily="GilmerRegular"
+                                    dominantBaseline="middle"
+                                >
+                                    {itemName.length > 20 ? `${itemName.slice(0, 20)}...` : itemName}
+                                    <title>{itemName}</title>
+                                </text>
+
+                                <line
+                                    x1="243"
+                                    y1="25"
+                                    x2="300"
+                                    y2="25"
+                                    style={{
+                                        stroke: NODE_TEXT_COLOR,
+                                        strokeWidth: 1.5,
+                                        markerEnd: `url(#${model.node.id}-arrow-head-left-item-${item.kind}-${sanitizeId(itemName)})`,
+                                        strokeDasharray: "6 6",
+                                    }}
+                                />
+                            </g>
+                        );
+                    })}
+
+                    <defs>
+                        {leftItems.map((item: CapabilityItem, index: number) => (
+                            <marker
+                                key={`${item.kind}-${item.data.name}-${index}`}
+                                id={`${model.node.id}-arrow-head-left-item-${item.kind}-${sanitizeId(item.data.name)}`}
+                                markerWidth="4"
+                                markerHeight="4"
+                                refX="3"
+                                refY="2"
+                                viewBox="0 0 4 4"
+                                orient="auto"
+                            >
+                                <polygon points="0,4 0,0 4,2" fill={NODE_TEXT_COLOR}></polygon>
+                            </marker>
+                        ))}
+                    </defs>
+                </svg>
+            )}
             <NodeStyles.Box
                 disabled={disabled}
                 hovered={isBoxHovered}
@@ -618,17 +668,6 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
                         )}
                     </NodeStyles.Row>
 
-                    <NodeStyles.AddItemContainer>
-                        <NodeStyles.AddItemButton readOnly={readOnly} onClick={onAddActivityClick} title="Add Activity">
-                            <Icon name="bi-plus" sx={{ fontSize: "16px", marginRight: "4px" }} />
-                            Add Activity
-                        </NodeStyles.AddItemButton>
-                        <NodeStyles.AddItemButton readOnly={readOnly} onClick={onAddHumanTaskClick} title="Add Human Task">
-                            <Icon name="bi-plus" sx={{ fontSize: "16px", marginRight: "4px" }} />
-                            Add Human Task
-                        </NodeStyles.AddItemButton>
-                    </NodeStyles.AddItemContainer>
-
                     {
                         sanitizedAgent?.role ? (
                             <NodeStyles.Row readOnly={readOnly} onClick={handleOnClick}>
@@ -673,7 +712,7 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
             </NodeStyles.Box>
 
             <svg
-                width={NODE_GAP_X + NODE_HEIGHT + LABEL_HEIGHT + LABEL_WIDTH + 10}
+                width={sideSvgWidth}
                 height={model.node.viewState?.ch}
                 viewBox={`0 0 300 ${containerHeight}`}
                 style={{ marginLeft: "-10px", position: "relative", zIndex: 1 }}
@@ -726,14 +765,13 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
                     />
                 </g>
 
-                {/* circles for tools, activities and human tasks */}
-                {capabilityItems.map((item: CapabilityItem, index: number) => {
+                {/* circles for tools and activities */}
+                {rightItems.map((item: CapabilityItem, index: number) => {
                     const itemName = item.data.name;
                     return (
                         <g
                             key={`${item.kind}-${itemName}-${index}`}
-                            transform={`translate(0, ${(index + 1) * (NODE_HEIGHT + AGENT_NODE_TOOL_GAP) + AGENT_NODE_TOOL_SECTION_GAP
-                                })`}
+                            transform={`translate(0, ${rowOffsetY(index + 1)})`}
                         >
                             <circle
                                 cx="80"
@@ -796,66 +834,6 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
                     );
                 })}
 
-                {/* Add "Add new tool" button below all capability circles — hidden in read-only mode */}
-                {!readOnly && <g
-                    transform={`translate(-11, ${capabilityItems.length > 0
-                        ? (capabilityItems.length + 1) * (NODE_HEIGHT + AGENT_NODE_TOOL_GAP) + AGENT_NODE_TOOL_SECTION_GAP
-                        : NODE_HEIGHT + AGENT_NODE_TOOL_SECTION_GAP
-                        })`}
-                    onClick={onAddToolClick}
-                    style={{ cursor: "pointer" }}
-                >
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        css={css`
-                            cursor: ${readOnly ? "not-allowed" : "pointer"};
-                            &:hover path:last-of-type {
-                                fill: ${NODE_BORDER_SELECTED_COLOR};
-                            }
-                            &:hover + .custom-tooltip {
-                                opacity: 1;
-                                visibility: visible;
-                            }
-                        `}
-                    >
-                        <title>Add New Tool / MCP Server</title>
-                        <path
-                            fill={CANVAS_BG_COLOR}
-                            d="M12 0C5 0 0 5 0 12s5 12 12 12 12-5 12-12S19 0 12 0z"
-                        />
-                        <path
-                            fill={NODE_TEXT_COLOR}
-                            d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2m0 18a8 8 0 1 1 8-8a8 8 0 0 1-8 8m4-9h-3V8a1 1 0 0 0-2 0v3H8a1 1 0 0 0 0 2h3v3a1 1 0 0 0 2 0v-3h3a1 1 0 0 0 0-2"
-                        />
-                    </svg>
-
-                    {/* Custom tooltip */}
-                    <foreignObject x="25" y="-10" width="100" height="30" style={{ pointerEvents: "none" }}>
-                        <div
-                            className="custom-tooltip"
-                            css={css`
-                                background-color: ${CANVAS_BG_COLOR};
-                                color: ${NODE_TEXT_COLOR};
-                                padding: 4px 8px;
-                                border-radius: 4px;
-                                font-size: 12px;
-                                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-                                opacity: 0;
-                                visibility: hidden;
-                                transition: opacity 0.2s ease-in-out;
-                                pointer-events: none;
-                                white-space: nowrap;
-                                font-family: "GilmerRegular";
-                            `}
-                        >
-                            Add New Tool / MCP Server
-                        </div>
-                    </foreignObject>
-                </g>}
-
                 <defs>
                     <marker
                         id={`${model.node.id}-arrow-head`}
@@ -887,7 +865,7 @@ export function DurableAgentRunNodeWidget(props: DurableAgentRunNodeWidgetProps)
                             strokeWidth="1"
                         />
                     </marker>
-                    {capabilityItems.map((item: CapabilityItem, index: number) => (
+                    {rightItems.map((item: CapabilityItem, index: number) => (
                         <marker
                             key={`${item.kind}-${item.data.name}-${index}`}
                             id={`${model.node.id}-arrow-head-item-${item.kind}-${sanitizeId(item.data.name)}`}

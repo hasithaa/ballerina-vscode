@@ -85,7 +85,7 @@ public record Category(Metadata metadata, List<Item> items) implements Item {
         DIRECT_LLM("Direct LLM", "AI components that connect directly with a large language model", null),
         RAG("RAG", "AI components specific to Retrieval-Augmented Generation workflows", null),
         AGENT("Agent", "Represents an AI Agent within a workflow", null),
-        DURABLE_AGENT("Configure Durable Agent",
+        DURABLE_AGENT("Configure Agent",
                 "Configure the durable agent's model, tools, and human tasks, then run it",
                 List.of("Durable", "Agent", "Workflow"));
 

@@ -74,7 +74,6 @@ public class DurableAgentRunBuilder extends CallBuilder {
     public static final String ROLE_KEY = "role";
     public static final String INSTRUCTIONS_KEY = "instructions";
     public static final String MODEL_KEY = "model";
-    public static final String TOOLS_KEY = "tools";
     public static final String MAX_ITER_KEY = "maxIter";
     public static final String VERBOSE_KEY = "verbose";
 
@@ -87,11 +86,10 @@ public class DurableAgentRunBuilder extends CallBuilder {
 
     // The order the form fields appear in: agent identity first, then the query and capabilities.
     private static final List<String> FORM_ORDER =
-            List.of(ROLE_KEY, INSTRUCTIONS_KEY, QUERY_KEY, MODEL_KEY, TOOLS_KEY, MAX_ITER_KEY);
+            List.of(ROLE_KEY, INSTRUCTIONS_KEY, QUERY_KEY, MODEL_KEY, MAX_ITER_KEY);
 
     private static final String STRING_TYPE = "string";
     private static final String MODEL_TYPE = "ai:ModelProvider";
-    private static final String TOOLS_TYPE = "(ai:BaseToolKit|ai:ToolConfig|ai:FunctionTool)[]";
 
     @Override
     protected NodeKind getFunctionNodeKind() {
@@ -202,8 +200,6 @@ public class DurableAgentRunBuilder extends CallBuilder {
                 + "first chat event", STRING_TYPE, false, "");
         addCustomProperty(MODEL_KEY, "Model", "The model provider used for the agent's LLM calls",
                 MODEL_TYPE, true, "");
-        addCustomProperty(TOOLS_KEY, "Tools", "The AI tools available to the agent",
-                TOOLS_TYPE, false, "[]");
         addCustomProperty(MAX_ITER_KEY, "Maximum Iterations", "Maximum LLM reasoning iterations per turn",
                 "int", false, "");
     }
@@ -376,14 +372,12 @@ public class DurableAgentRunBuilder extends CallBuilder {
         }
         callArgs.add(SYSTEM_PROMPT_KEY + " = " + systemPrompt);
         callArgs.add(MODEL_KEY + " = " + model);
-        for (String key : List.of(TOOLS_KEY, MAX_ITER_KEY)) {
-            sourceBuilder.getProperty(key).ifPresent(p -> {
-                String source = p.toSourceCode();
-                if (source != null && !source.isEmpty() && !isEmptyToolsList(key, source)) {
-                    callArgs.add(key + " = " + source);
-                }
-            });
-        }
+        sourceBuilder.getProperty(MAX_ITER_KEY).ifPresent(p -> {
+            String source = p.toSourceCode();
+            if (source != null && !source.isEmpty()) {
+                callArgs.add(MAX_ITER_KEY + " = " + source);
+            }
+        });
 
         sourceBuilder.token()
                 .keyword(SyntaxKind.CHECK_KEYWORD)
@@ -430,10 +424,6 @@ public class DurableAgentRunBuilder extends CallBuilder {
                 .anyMatch(type -> type.fieldType() == Property.ValueType.PROMPT && type.selected());
     }
 
-    // The tools list defaults to []; omit the argument entirely when the user left it empty.
-    private static boolean isEmptyToolsList(String key, String source) {
-        return TOOLS_KEY.equals(key) && source.replaceAll("\\s", "").equals("[]");
-    }
 
     private static String requireValue(SourceBuilder sourceBuilder, String key, String message) {
         return sourceBuilder.getProperty(key)

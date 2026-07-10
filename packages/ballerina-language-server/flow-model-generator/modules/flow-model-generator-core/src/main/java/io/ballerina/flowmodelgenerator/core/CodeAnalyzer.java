@@ -150,6 +150,8 @@ import io.ballerina.flowmodelgenerator.core.model.node.DataLoaderBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DataMapperBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentAddActivityBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentHumanTaskBuilder;
+import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentRegisterEventBuilder;
+import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentRegisterToolBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.DurableAgentRunBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.EmbeddingProviderBuilder;
 import io.ballerina.flowmodelgenerator.core.model.node.FailBuilder;
@@ -231,9 +233,11 @@ import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.CALL_HUMAN
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.CONTEXT_CLASS_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.HUMAN_TASK_DESCRIPTION;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITY_METHOD_NAME;
-import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITY_DESCRIPTION;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITY_LABEL;
-import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_HUMAN_TASK_DESCRIPTION;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_AGENT_TOOL_LABEL;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_AGENT_TOOL_METHOD_NAME;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_EVENT_LABEL;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_UPDATE_EVENTS_METHOD_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_HUMAN_TASK_LABEL;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_HUMAN_TASK_METHOD_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.RUN_DURABLE_AGENT_DESCRIPTION;
@@ -381,6 +385,12 @@ public class CodeAnalyzer extends NodeVisitor {
         startNode(NodeKind.EVENT_START, functionDefinitionNode).codedata()
                 .lineRange(functionBodyNode.lineRange())
                 .sourceCode(functionDefinitionNode.toSourceCode().strip());
+
+        // A durable agent's start node reads "Configure Agent": the body is where the
+        // agent's capabilities are registered before the terminal buildAndRun call.
+        if (kind == FunctionKind.DURABLE_AGENT) {
+            nodeBuilder.metadata().label("Configure Agent");
+        }
 
         nodeBuilder.metadata()
                 .addData(KIND_KEY, kind.getValue())
@@ -944,6 +954,21 @@ public class CodeAnalyzer extends NodeVisitor {
         nodeBuilder.properties().checkError(hasCheck);
     }
 
+    // The first positional argument rendered as a node's secondary detail: string
+    // literals are unquoted, references shown verbatim.
+    private static String firstArgDetail(MethodCallExpressionNode callNode) {
+        for (FunctionArgumentNode arg : callNode.arguments()) {
+            if (arg instanceof PositionalArgumentNode posArg) {
+                String raw = posArg.expression().toSourceCode().trim();
+                if (raw.length() >= 2 && raw.startsWith("\"") && raw.endsWith("\"")) {
+                    return raw.substring(1, raw.length() - 1);
+                }
+                return raw;
+            }
+        }
+        return "";
+    }
+
     // Rebuilds a durable-agent AgentContext call (runDurableAgent / registerActivities /
     // registerHumanTask) from source, keeping the same form shape as the palette templates.
     private void populateDurableAgentCallProperties(MethodCallExpressionNode callNode, FunctionSymbol functionSymbol,
@@ -958,13 +983,14 @@ public class CodeAnalyzer extends NodeVisitor {
         String label = switch (nodeKind) {
             case DURABLE_AGENT_RUN -> RUN_DURABLE_AGENT_LABEL;
             case DURABLE_AGENT_ADD_ACTIVITY -> REGISTER_ACTIVITY_LABEL;
+            case DURABLE_AGENT_REGISTER_EVENT -> REGISTER_EVENT_LABEL;
+            case DURABLE_AGENT_REGISTER_TOOL -> REGISTER_AGENT_TOOL_LABEL;
             default -> REGISTER_HUMAN_TASK_LABEL;
         };
-        String description = switch (nodeKind) {
-            case DURABLE_AGENT_RUN -> RUN_DURABLE_AGENT_DESCRIPTION;
-            case DURABLE_AGENT_ADD_ACTIVITY -> REGISTER_ACTIVITY_DESCRIPTION;
-            default -> REGISTER_HUMAN_TASK_DESCRIPTION;
-        };
+        // The registered name (activity/event/tool/task) is the node's secondary detail.
+        String description = nodeKind == NodeKind.DURABLE_AGENT_RUN
+                ? RUN_DURABLE_AGENT_DESCRIPTION
+                : firstArgDetail(callNode);
 
         nodeBuilder
                 .symbolInfo(functionSymbol)
@@ -1055,21 +1081,8 @@ public class CodeAnalyzer extends NodeVisitor {
             }
         }
 
-        // The agent's AI tools (from this call's own `tools = [...]` argument).
-        List<ToolData> toolData = new ArrayList<>();
-        for (FunctionArgumentNode arg : callNode.arguments()) {
-            if (arg instanceof NamedArgumentNode namedArg
-                    && DurableAgentRunBuilder.TOOLS_KEY.equals(namedArg.argumentName().name().text())
-                    && namedArg.expression() instanceof ListConstructorExpressionNode toolsList) {
-                for (Node element : toolsList.expressions()) {
-                    toolData.add(new ToolData(element.toSourceCode().trim(), null, "", null));
-                }
-            }
-        }
-        nodeBuilder.metadata().addData("tools", toolData);
-
-        // Activities and human tasks are registered on the context anywhere in the enclosing
-        // agent function; surface them all on this node regardless of code flow.
+        // Capabilities are registered on the context anywhere in the enclosing agent
+        // function; surface them all on this node regardless of code flow.
         collectDurableAgentCapabilities(callNode);
     }
 
@@ -1086,6 +1099,8 @@ public class CodeAnalyzer extends NodeVisitor {
         }
         List<AgentCapabilityData> activities = new ArrayList<>();
         List<AgentCapabilityData> humanTasks = new ArrayList<>();
+        List<AgentCapabilityData> agentTools = new ArrayList<>();
+        List<AgentCapabilityData> updateEvents = new ArrayList<>();
         ((FunctionDefinitionNode) parent).functionBody().accept(new NodeVisitor() {
             @Override
             public void visit(MethodCallExpressionNode methodCall) {
@@ -1100,6 +1115,25 @@ public class CodeAnalyzer extends NodeVisitor {
                     values.put(DurableAgentAddActivityBuilder.ACTIVITY_KEY, activityRef);
                     activities.add(new AgentCapabilityData(activityRef, "activity",
                             statementLineRange(methodCall), values));
+                } else if (REGISTER_AGENT_TOOL_METHOD_NAME.equals(methodName)
+                        && !args.isEmpty() && args.get(0) instanceof PositionalArgumentNode toolArg
+                        && (toolArg.expression().kind() == SyntaxKind.SIMPLE_NAME_REFERENCE
+                        || toolArg.expression().kind() == SyntaxKind.QUALIFIED_NAME_REFERENCE)) {
+                    String toolRef = toolArg.expression().toSourceCode().trim();
+                    Map<String, String> toolValues = new LinkedHashMap<>();
+                    toolValues.put(DurableAgentRegisterToolBuilder.TOOL_KEY, toolRef);
+                    agentTools.add(new AgentCapabilityData(toolRef, "tool",
+                            statementLineRange(methodCall), toolValues));
+                } else if (REGISTER_UPDATE_EVENTS_METHOD_NAME.equals(methodName)
+                        && !args.isEmpty() && args.get(0) instanceof PositionalArgumentNode eventArg
+                        && eventArg.expression().kind() == SyntaxKind.STRING_LITERAL) {
+                    String rawEvent = eventArg.expression().toSourceCode().trim();
+                    if (rawEvent.length() >= 2 && rawEvent.startsWith("\"") && rawEvent.endsWith("\"")) {
+                        Map<String, String> eventValues = parseRegisterEventArgs(args);
+                        updateEvents.add(new AgentCapabilityData(
+                                rawEvent.substring(1, rawEvent.length() - 1), "event",
+                                statementLineRange(methodCall), eventValues));
+                    }
                 } else if (REGISTER_HUMAN_TASK_METHOD_NAME.equals(methodName)
                         && !args.isEmpty() && args.get(0) instanceof PositionalArgumentNode taskArg
                         && taskArg.expression().kind() == SyntaxKind.STRING_LITERAL) {
@@ -1115,6 +1149,30 @@ public class CodeAnalyzer extends NodeVisitor {
         });
         nodeBuilder.metadata().addData("activities", activities);
         nodeBuilder.metadata().addData("humanTasks", humanTasks);
+        nodeBuilder.metadata().addData("tools", agentTools);
+        nodeBuilder.metadata().addData("events", updateEvents);
+    }
+
+    // Parses registerUpdateEvents arguments into the register-event builder's property keys
+    // so the edit form opens pre-filled.
+    private static Map<String, String> parseRegisterEventArgs(SeparatedNodeList<FunctionArgumentNode> args) {
+        Map<String, String> values = new LinkedHashMap<>();
+        int positional = 0;
+        for (FunctionArgumentNode arg : args) {
+            if (arg instanceof PositionalArgumentNode posArg) {
+                if (positional == 0) {
+                    values.put(DurableAgentRegisterEventBuilder.NAME_KEY, posArg.expression().toSourceCode().trim());
+                } else if (positional == 1) {
+                    values.put(DurableAgentRegisterEventBuilder.REQUEST_TYPE_KEY,
+                            posArg.expression().toSourceCode().trim());
+                } else if (positional == 2) {
+                    values.put(DurableAgentRegisterEventBuilder.RESPONSE_TYPE_KEY,
+                            posArg.expression().toSourceCode().trim());
+                }
+                positional++;
+            }
+        }
+        return values;
     }
 
     // The line range of the whole statement enclosing a capability method call, used to
@@ -3424,11 +3482,6 @@ public class CodeAnalyzer extends NodeVisitor {
 
     @Override
     public void visit(ExpressionStatementNode expressionStatementNode) {
-        // Durable-agent capability registrations are represented on the Run Durable Agent
-        // node (as attached activities/human tasks) rather than as standalone flow nodes.
-        if (isDurableAgentConfigStatement(expressionStatementNode.expression())) {
-            return;
-        }
         expressionStatementNode.expression().accept(this);
         if (isNodeUnidentified()) {
             handleExpressionNode(expressionStatementNode);
@@ -3436,26 +3489,6 @@ public class CodeAnalyzer extends NodeVisitor {
         endNode(expressionStatementNode);
     }
 
-    // True for `check agentContext.registerActivities(...)` / `registerHumanTask(...)` statements
-    // on the workflow AgentContext; these are visualized on the Run Durable Agent node instead.
-    private boolean isDurableAgentConfigStatement(ExpressionNode expression) {
-        ExpressionNode unwrapped = expression;
-        if (unwrapped.kind() == SyntaxKind.CHECK_EXPRESSION || unwrapped.kind() == SyntaxKind.CHECK_ACTION) {
-            unwrapped = ((CheckExpressionNode) unwrapped).expression();
-        }
-        if (!(unwrapped instanceof MethodCallExpressionNode methodCall)) {
-            return false;
-        }
-        String methodName = getIdentifierName(methodCall.methodName());
-        if (!REGISTER_ACTIVITY_METHOD_NAME.equals(methodName)
-                && !REGISTER_HUMAN_TASK_METHOD_NAME.equals(methodName)) {
-            return false;
-        }
-        Optional<ClassSymbol> classSymbol = getClassSymbol(methodCall.expression());
-        return classSymbol.isPresent()
-                && AGENT_CONTEXT_CLASS_NAME.equals(classSymbol.get().getName().orElse(""))
-                && isWorkflowModule(classSymbol.get().getModule());
-    }
 
     @Override
     public void visit(ContinueStatementNode continueStatementNode) {
@@ -3506,6 +3539,8 @@ public class CodeAnalyzer extends NodeVisitor {
                 case RUN_DURABLE_AGENT_METHOD_NAME -> NodeKind.DURABLE_AGENT_RUN;
                 case REGISTER_ACTIVITY_METHOD_NAME -> NodeKind.DURABLE_AGENT_ADD_ACTIVITY;
                 case REGISTER_HUMAN_TASK_METHOD_NAME -> NodeKind.DURABLE_AGENT_HUMAN_TASK;
+                case REGISTER_UPDATE_EVENTS_METHOD_NAME -> NodeKind.DURABLE_AGENT_REGISTER_EVENT;
+                case REGISTER_AGENT_TOOL_METHOD_NAME -> NodeKind.DURABLE_AGENT_REGISTER_TOOL;
                 default -> null;
             };
             if (agentNodeKind != null) {

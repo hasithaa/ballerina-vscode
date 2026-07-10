@@ -51,7 +51,7 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
     public static final String LABEL = "Durable Agent";
     public static final String DESCRIPTION = "Define a durable AI agent backed by a workflow";
 
-    private static final String EVENTS_PARAM = "record {| future<string> chat; |} events";
+    private static final String DEFAULT_INPUT_TYPE = "map<anydata>";
     private static final String RETURN_TYPE = "error?";
 
     @Override
@@ -98,16 +98,17 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
         WorkflowBuilder.generateParameter(sourceBuilder,
                 WORKFLOW_MODULE + ":" + AGENT_CONTEXT_CLASS_NAME, DEFAULT_AGENT_CTX_PARAM_NAME);
 
+        // The input parameter is mandatory (the compiler plugin rejects agents without it);
+        // default to a generic map when the wizard leaves the input type empty.
         Optional<Property> inputProperty = sourceBuilder.getProperty(WorkflowBuilder.INPUT_KEY);
         String inputTypeName = inputProperty.map(p -> p.value().toString()).orElse("");
-        if (!inputTypeName.isEmpty()) {
-            sourceBuilder.token().keyword(SyntaxKind.COMMA_TOKEN);
-            WorkflowBuilder.generateParameter(sourceBuilder, inputTypeName, DEFAULT_INPUT_PARAM_NAME);
+        if (inputTypeName.isEmpty()) {
+            inputTypeName = DEFAULT_INPUT_TYPE;
         }
+        sourceBuilder.token().keyword(SyntaxKind.COMMA_TOKEN);
+        WorkflowBuilder.generateParameter(sourceBuilder, inputTypeName, DEFAULT_INPUT_PARAM_NAME);
 
         sourceBuilder.token()
-                .keyword(SyntaxKind.COMMA_TOKEN)
-                .name(EVENTS_PARAM)
                 .keyword(SyntaxKind.CLOSE_PAREN_TOKEN)
                 .keyword(SyntaxKind.RETURNS_KEYWORD)
                 .name(RETURN_TYPE);
@@ -119,7 +120,9 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
             // has one; otherwise fall back to `wso2ModelProvider`, which the creation wizard
             // creates only when no provider exists yet.
             String modelVar = resolveExistingModelProvider(sourceBuilder);
-            String runStatement = "check " + DEFAULT_AGENT_CTX_PARAM_NAME + ".runDurableAgent("
+            String runStatement = "check " + DEFAULT_AGENT_CTX_PARAM_NAME
+                    + ".registerUpdateEvents(\"chat\", string);\n"
+                    + "check " + DEFAULT_AGENT_CTX_PARAM_NAME + ".buildAndRun("
                     + "systemPrompt = {role: string `" + funcName + "`, instructions: string ``}, "
                     + "model = " + modelVar + ");";
             sourceBuilder

@@ -149,17 +149,25 @@ public class Constants {
         public static final String DURABLE_AGENT = "DurableAgent";
         public static final String AGENT_CONTEXT_CLASS_NAME = "AgentContext";
         public static final String REGISTER_ACTIVITY_METHOD_NAME = "registerActivity";
-        public static final String REGISTER_ACTIVITY_LABEL = "Add Activity";
+        public static final String REGISTER_ACTIVITY_LABEL = "Register Activity";
         public static final String REGISTER_ACTIVITY_DESCRIPTION =
                 "Register a workflow activity as a durable agent tool";
         public static final String REGISTER_HUMAN_TASK_METHOD_NAME = "registerHumanTask";
-        public static final String REGISTER_HUMAN_TASK_LABEL = "Add Human Task";
+        public static final String REGISTER_HUMAN_TASK_LABEL = "Register HumanTask";
         public static final String REGISTER_HUMAN_TASK_DESCRIPTION =
                 "Register a human task the agent can create and wait on";
-        public static final String RUN_DURABLE_AGENT_METHOD_NAME = "runDurableAgent";
-        public static final String RUN_DURABLE_AGENT_LABEL = "Run Durable Agent";
+        public static final String REGISTER_UPDATE_EVENTS_METHOD_NAME = "registerUpdateEvents";
+        public static final String REGISTER_EVENT_LABEL = "Register Event";
+        public static final String REGISTER_EVENT_DESCRIPTION =
+                "Declare a named two-way update channel the agent can wait on";
+        public static final String REGISTER_AGENT_TOOL_METHOD_NAME = "registerAgentTool";
+        public static final String REGISTER_AGENT_TOOL_LABEL = "Register AgentTool";
+        public static final String REGISTER_AGENT_TOOL_DESCRIPTION =
+                "Register an AI tool the agent can invoke";
+        public static final String RUN_DURABLE_AGENT_METHOD_NAME = "buildAndRun";
+        public static final String RUN_DURABLE_AGENT_LABEL = "Durable Agent";
         public static final String RUN_DURABLE_AGENT_DESCRIPTION =
-                "Run the durable agent loop with the configured capabilities";
+                "Build the agent from the registered capabilities and run the durable loop";
         public static final String UPDATE_AGENT_FUNCTION_NAME = "updateAgent";
         public static final String UPDATE_AGENT_LABEL = "Update Durable Agent";
         public static final String UPDATE_AGENT_DESCRIPTION =

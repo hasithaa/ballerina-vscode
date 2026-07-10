@@ -3009,7 +3009,10 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         if (!lineRange) {
             return;
         }
-        const nodeKind = capability?.type === "activity" ? "DURABLE_AGENT_ADD_ACTIVITY" : "DURABLE_AGENT_HUMAN_TASK";
+        const nodeKind = capability?.type === "activity" ? "DURABLE_AGENT_ADD_ACTIVITY"
+            : capability?.type === "event" ? "DURABLE_AGENT_REGISTER_EVENT"
+                : capability?.type === "tool" ? "DURABLE_AGENT_REGISTER_TOOL"
+                    : "DURABLE_AGENT_HUMAN_TASK";
         targetRef.current = lineRange;
         setTargetLineRange(lineRange);
         setShowProgressIndicator(true);

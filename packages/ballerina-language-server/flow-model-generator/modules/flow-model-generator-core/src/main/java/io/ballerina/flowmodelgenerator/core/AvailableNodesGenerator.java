@@ -122,7 +122,7 @@ public class AvailableNodesGenerator {
         boolean isInWorkflowFunction = isInsideWorkflowFunction(position);
         this.inDurableAgentFunction = isInsideDurableAgentFunction(position);
 
-        if (!isInWorkflowFunction) {
+        if (!isInWorkflowFunction && !this.inDurableAgentFunction) {
             List<Category> connections = new ArrayList<>();
             List<Symbol> symbols = semanticModel.visibleSymbols(document, position);
             for (Symbol symbol : symbols) {
@@ -134,6 +134,13 @@ public class AvailableNodesGenerator {
             }
             connections.sort(Comparator.comparing(connection -> connection.metadata().label()));
             this.rootBuilder.stepIn(Category.Name.CONNECTIONS).items(new ArrayList<>(connections)).stepOut();
+        }
+
+        // Inside a durable agent the palette leads with the Configure Agent group.
+        if (this.inDurableAgentFunction) {
+            this.rootBuilder.stepIn(Category.Name.DURABLE_AGENT)
+                    .items(getConfigureAgentNodes())
+                    .stepOut();
         }
 
         boolean insideTestFunction = isInsideTestFunction(position);
@@ -153,6 +160,33 @@ public class AvailableNodesGenerator {
         }
 
         return jsonArray;
+    }
+
+    // The Configure Agent palette group: the four capability registrations.
+    private List<Item> getConfigureAgentNodes() {
+        List<Item> nodes = new ArrayList<>();
+        record NodeSpec(String label, String description, NodeKind kind) { }
+        List<NodeSpec> specs = List.of(
+                new NodeSpec(Workflow.REGISTER_EVENT_LABEL, Workflow.REGISTER_EVENT_DESCRIPTION,
+                        NodeKind.DURABLE_AGENT_REGISTER_EVENT),
+                new NodeSpec(Workflow.REGISTER_ACTIVITY_LABEL, Workflow.REGISTER_ACTIVITY_DESCRIPTION,
+                        NodeKind.DURABLE_AGENT_ADD_ACTIVITY),
+                new NodeSpec(Workflow.REGISTER_HUMAN_TASK_LABEL, Workflow.REGISTER_HUMAN_TASK_DESCRIPTION,
+                        NodeKind.DURABLE_AGENT_HUMAN_TASK),
+                new NodeSpec(Workflow.REGISTER_AGENT_TOOL_LABEL, Workflow.REGISTER_AGENT_TOOL_DESCRIPTION,
+                        NodeKind.DURABLE_AGENT_REGISTER_TOOL));
+        for (NodeSpec spec : specs) {
+            nodes.add(new AvailableNode(
+                    new Metadata.Builder<>(null)
+                            .label(spec.label())
+                            .description(spec.description())
+                            .build(),
+                    new Codedata.Builder<>(null)
+                            .node(spec.kind())
+                            .build(),
+                    true));
+        }
+        return nodes;
     }
 
     private boolean isInsideDurableAgentFunction(LinePosition position) {
