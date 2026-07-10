@@ -82,14 +82,41 @@ public class DurableAgentHumanTaskBuilder extends CallBuilder {
         setConcreteConstData();
         addStringProperty(TASK_NAME_KEY, "Task Name",
                 "Identifies the task type; also the tool name advertised to the agent",
-                "\"approveRequest\"", true);
+                "approveRequest", true);
         addStringProperty(USER_ROLES_KEY, "User Roles",
-                "Role(s) permitted to complete this task", "\"MANAGER\"", true);
+                "Role(s) permitted to complete this task", "MANAGER", true);
         addStringProperty(TITLE_KEY, "Title",
                 "Short summary shown in the task inbox", "", false);
-        addStringProperty(DESCRIPTION_KEY, "Description",
-                "Context shown to the person completing the task", "", false);
+        addDocTextProperty(DESCRIPTION_KEY, "Description",
+                "Context shown to the person completing the task");
         properties().checkError(true);
+    }
+
+    // Multi-line text field (rendered as a text area) with an expression fallback.
+    private void addDocTextProperty(String key, String label, String doc) {
+        properties().custom()
+                .metadata()
+                    .label(label)
+                    .description(doc)
+                    .stepOut()
+                .type()
+                    .fieldType(Property.ValueType.DOC_TEXT)
+                    .ballerinaType(STRING_TYPE)
+                    .selected(true)
+                    .stepOut()
+                .type()
+                    .fieldType(Property.ValueType.EXPRESSION)
+                    .ballerinaType(STRING_TYPE)
+                    .selected(false)
+                    .stepOut()
+                .codedata()
+                    .kind(ParameterData.Kind.DEFAULTABLE.name())
+                    .stepOut()
+                .value("")
+                .editable(true)
+                .optional(true)
+                .stepOut()
+                .addProperty(key);
     }
 
     private void addStringProperty(String key, String label, String doc, String placeholder, boolean required) {
@@ -99,9 +126,14 @@ public class DurableAgentHumanTaskBuilder extends CallBuilder {
                     .description(doc)
                     .stepOut()
                 .type()
-                    .fieldType(Property.ValueType.EXPRESSION)
+                    .fieldType(Property.ValueType.TEXT)
                     .ballerinaType(STRING_TYPE)
                     .selected(true)
+                    .stepOut()
+                .type()
+                    .fieldType(Property.ValueType.EXPRESSION)
+                    .ballerinaType(STRING_TYPE)
+                    .selected(false)
                     .stepOut()
                 .codedata()
                     .kind(required ? ParameterData.Kind.REQUIRED.name() : ParameterData.Kind.DEFAULTABLE.name())
@@ -117,8 +149,14 @@ public class DurableAgentHumanTaskBuilder extends CallBuilder {
     @Override
     public Map<Path, List<TextEdit>> toSource(SourceBuilder sourceBuilder) {
         String ctxParamName = WorkflowUtil.resolveAgentContextParamName(sourceBuilder);
-        String taskName = requireValue(sourceBuilder, TASK_NAME_KEY, "Task name is required");
-        String userRoles = requireValue(sourceBuilder, USER_ROLES_KEY, "User roles are required");
+        String taskName = sourceBuilder.getProperty(TASK_NAME_KEY)
+                .filter(p -> p.value() != null && !p.value().toString().isEmpty())
+                .map(DurableAgentHumanTaskBuilder::quotedIfText)
+                .orElseThrow(() -> new IllegalStateException("Task name is required"));
+        String userRoles = sourceBuilder.getProperty(USER_ROLES_KEY)
+                .filter(p -> p.value() != null && !p.value().toString().isEmpty())
+                .map(DurableAgentHumanTaskBuilder::quotedIfText)
+                .orElseThrow(() -> new IllegalStateException("User roles are required"));
 
         sourceBuilder.token()
                 .keyword(SyntaxKind.CHECK_KEYWORD)
@@ -143,6 +181,20 @@ public class DurableAgentHumanTaskBuilder extends CallBuilder {
                 .textEdit()
                 .acceptImport(WORKFLOW_ORG, WORKFLOW_MODULE)
                 .build();
+    }
+
+
+    // Renders a string-valued field: TEXT-mode values are quoted (with escaping) while
+    // expression-mode values pass through as written.
+    private static String quotedIfText(Property property) {
+        String value = property.value() == null ? "" : property.value().toString();
+        boolean textSelected = property.types() == null || property.types().stream()
+                .anyMatch(type -> (type.fieldType() == Property.ValueType.TEXT
+                        || type.fieldType() == Property.ValueType.DOC_TEXT) && type.selected());
+        if (!textSelected || (value.startsWith("\"") && value.endsWith("\"") && value.length() >= 2)) {
+            return property.toSourceCode();
+        }
+        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
     private static String requireValue(SourceBuilder sourceBuilder, String key, String message) {

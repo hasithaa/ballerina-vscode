@@ -32,6 +32,7 @@ import {
     NODE_GAP_X,
     NODE_GAP_Y,
     NODE_HEIGHT,
+    NODE_PADDING,
     NODE_WIDTH,
     PROMPT_NODE_HEIGHT,
     PROMPT_NODE_WIDTH,
@@ -174,7 +175,11 @@ export class SizingVisitor implements BaseVisitor {
     endVisitEventStart(node: FlowNode, parent?: FlowNode): void {
         if (!this.validateNode(node)) return;
         // consider this as a start node
-        const width = Math.round(NODE_WIDTH / 3);
+        // Size the pill to fit its label (e.g. "Configure Agent") instead of clipping it;
+        // ~8px per character at the 14px GilmerMedium label font, plus the pill padding.
+        const label = node.metadata?.label || "Start";
+        const labelWidth = label.length * 8 + NODE_PADDING * 2 + NODE_BORDER_WIDTH * 2;
+        const width = Math.max(Math.round(NODE_WIDTH / 3), Math.min(labelWidth, NODE_WIDTH));
         const height = Math.round(NODE_HEIGHT / 1.5) + NODE_BORDER_WIDTH * 2;
         const halfWidth = width / 2;
         this.setNodeSize(node, halfWidth, halfWidth, height);

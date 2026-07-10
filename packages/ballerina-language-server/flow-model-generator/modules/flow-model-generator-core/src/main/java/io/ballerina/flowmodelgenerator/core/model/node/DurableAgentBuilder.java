@@ -126,10 +126,12 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
             String modelVar = resolveExistingModelProvider(sourceBuilder);
             // The creation description becomes the agent's initial instructions.
             String instructions = description.replace("`", "'");
+            // No provider in the project: omit the model argument — the resulting compiler
+            // diagnostic renders on the agent box, guiding the user to configure a model.
+            String modelArg = modelVar == null ? "" : ", model = " + modelVar;
             String runStatement = "check " + DEFAULT_AGENT_CTX_PARAM_NAME + ".buildAndRun("
                     + "systemPrompt = {role: string `" + funcName + "`, instructions: string `"
-                    + instructions + "`}, "
-                    + "model = " + modelVar + ");";
+                    + instructions + "`}" + modelArg + ");";
             sourceBuilder
                     .token()
                         .openBrace()
@@ -147,9 +149,6 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
         return sourceBuilder.build();
     }
 
-    // The default provider variable created by the wizard when the project has none yet.
-    private static final String DEFAULT_MODEL_PROVIDER_VAR = "wso2ModelProvider";
-
     // Picks an existing module-level ai:ModelProvider variable to reference in the pre-populated
     // run call, so creating an agent in a project that already has a provider does not force a
     // new WSO2 provider. Falls back to the default name when the project has no provider.
@@ -166,8 +165,8 @@ public class DurableAgentBuilder extends FunctionDefinitionBuilder {
                 }
             }
         } catch (RuntimeException e) {
-            // Project resolution can fail before the module is pulled; use the default name.
+            // Project resolution can fail before the module is pulled; omit the model.
         }
-        return DEFAULT_MODEL_PROVIDER_VAR;
+        return null;
     }
 }

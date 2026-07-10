@@ -273,6 +273,7 @@ public class DurableAgentRunBuilder extends CallBuilder {
                     .kind(ParameterData.Kind.REQUIRED.name())
                     .originalName(MODEL_KEY)
                     .stepOut()
+                .placeholder("Select a model provider")
                 .value(value)
                 .editable(true)
                 // The model is configured through the agent box's attached model-provider
@@ -369,8 +370,12 @@ public class DurableAgentRunBuilder extends CallBuilder {
         String ctxParamName = WorkflowUtil.resolveAgentContextParamName(sourceBuilder);
 
         String systemPrompt = buildSystemPromptSource(sourceBuilder);
-        String model = requireValue(sourceBuilder, MODEL_KEY,
-                "A model provider is required to run the agent");
+        // The model is optional at authoring time: omitting it produces a compiler
+        // diagnostic on the agent box instead of blocking the save.
+        String model = sourceBuilder.getProperty(MODEL_KEY)
+                .filter(p -> p.value() != null && !p.value().toString().isEmpty())
+                .map(Property::toSourceCode)
+                .orElse(null);
 
         List<String> callArgs = new ArrayList<>();
         Optional<Property> queryProperty = sourceBuilder.getProperty(QUERY_KEY);
@@ -382,7 +387,9 @@ public class DurableAgentRunBuilder extends CallBuilder {
             callArgs.add(query);
         }
         callArgs.add(SYSTEM_PROMPT_KEY + " = " + systemPrompt);
-        callArgs.add(MODEL_KEY + " = " + model);
+        if (model != null) {
+            callArgs.add(MODEL_KEY + " = " + model);
+        }
         sourceBuilder.getProperty(MAX_ITER_KEY).ifPresent(p -> {
             String source = p.toSourceCode();
             if (source != null && !source.isEmpty()) {

@@ -165,7 +165,7 @@ public class Constants {
         public static final String REGISTER_AGENT_TOOL_DESCRIPTION =
                 "Register an AI tool the agent can invoke";
         public static final String RUN_DURABLE_AGENT_METHOD_NAME = "buildAndRun";
-        public static final String RUN_DURABLE_AGENT_LABEL = "Durable Agent";
+        public static final String RUN_DURABLE_AGENT_LABEL = "Build and Run Agent";
         public static final String RUN_DURABLE_AGENT_DESCRIPTION =
                 "Build the agent from the registered capabilities and run the durable loop";
         public static final String UPDATE_AGENT_FUNCTION_NAME = "updateAgent";

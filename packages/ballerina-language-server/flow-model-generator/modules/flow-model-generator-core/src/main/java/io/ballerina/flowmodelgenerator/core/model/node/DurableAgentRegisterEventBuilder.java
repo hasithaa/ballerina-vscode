@@ -91,14 +91,19 @@ public class DurableAgentRegisterEventBuilder extends CallBuilder {
                     .description(NAME_DOC)
                     .stepOut()
                 .type()
-                    .fieldType(Property.ValueType.EXPRESSION)
+                    .fieldType(Property.ValueType.TEXT)
                     .ballerinaType(STRING_TYPE)
                     .selected(true)
+                    .stepOut()
+                .type()
+                    .fieldType(Property.ValueType.EXPRESSION)
+                    .ballerinaType(STRING_TYPE)
+                    .selected(false)
                     .stepOut()
                 .codedata()
                     .kind(ParameterData.Kind.REQUIRED.name())
                     .stepOut()
-                .placeholder("\"chat\"")
+                .placeholder("chat")
                 .value("")
                 .editable(true)
                 .stepOut()
@@ -147,7 +152,10 @@ public class DurableAgentRegisterEventBuilder extends CallBuilder {
     @Override
     public Map<Path, List<TextEdit>> toSource(SourceBuilder sourceBuilder) {
         String ctxParamName = WorkflowUtil.resolveAgentContextParamName(sourceBuilder);
-        String name = requireValue(sourceBuilder, NAME_KEY, "An event name is required");
+        String name = sourceBuilder.getProperty(NAME_KEY)
+                .filter(p -> p.value() != null && !p.value().toString().isEmpty())
+                .map(DurableAgentRegisterEventBuilder::quotedIfText)
+                .orElseThrow(() -> new IllegalStateException("An event name is required"));
         String requestType = requireValue(sourceBuilder, REQUEST_TYPE_KEY, "A request type is required");
         Optional<Property> responseType = sourceBuilder.getProperty(RESPONSE_TYPE_KEY)
                 .filter(p -> p.value() != null && !p.value().toString().isEmpty());
@@ -169,6 +177,19 @@ public class DurableAgentRegisterEventBuilder extends CallBuilder {
                 .textEdit()
                 .acceptImport(WORKFLOW_ORG, WORKFLOW_MODULE)
                 .build();
+    }
+
+
+    // Renders a string-valued field: TEXT-mode values are quoted (with escaping) while
+    // expression-mode values pass through as written.
+    private static String quotedIfText(Property property) {
+        String value = property.value() == null ? "" : property.value().toString();
+        boolean textSelected = property.types() == null || property.types().stream()
+                .anyMatch(type -> type.fieldType() == Property.ValueType.TEXT && type.selected());
+        if (!textSelected || (value.startsWith("\"") && value.endsWith("\"") && value.length() >= 2)) {
+            return property.toSourceCode();
+        }
+        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
     private static String requireValue(SourceBuilder sourceBuilder, String key, String message) {

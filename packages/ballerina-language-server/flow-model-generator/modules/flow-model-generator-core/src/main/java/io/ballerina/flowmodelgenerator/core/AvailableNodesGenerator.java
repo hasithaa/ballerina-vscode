@@ -367,7 +367,7 @@ public class AvailableNodesGenerator {
     }
 
     private void setDefaultNodes(boolean disableBallerinaAiNodes, boolean isInWorkflowFunction) {
-        if (!isInWorkflowFunction) {
+        if (!isInWorkflowFunction && !this.inDurableAgentFunction) {
             this.rootBuilder.stepIn(Category.Name.AI)
                     .items(getAiNodes(disableBallerinaAiNodes))
                     .stepOut();
@@ -410,7 +410,7 @@ public class AvailableNodesGenerator {
                     .node(NodeKind.PANIC)
                     .stepOut();
 
-        if (!isInWorkflowFunction) {
+        if (!isInWorkflowFunction && !this.inDurableAgentFunction) {
             this.rootBuilder
                     .stepIn(Category.Name.CONCURRENCY)
                         .node(NodeKind.FORK)

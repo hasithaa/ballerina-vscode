@@ -1004,7 +1004,7 @@ public class CodeAnalyzer extends NodeVisitor {
         if (nodeKind != NodeKind.DURABLE_AGENT_RUN) {
             String detail = firstArgDetail(callNode);
             description = detail;
-            agentRegisterDetails.put(callNode.lineRange(), detail);
+            agentRegisterDetails.put(statementLineRange(callNode), detail);
         }
 
         nodeBuilder
@@ -4743,7 +4743,7 @@ public class CodeAnalyzer extends NodeVisitor {
                 reordered.add(withMetadata(node, "Configure Agent", null, null));
             } else if (nodeKind == NodeKind.DURABLE_AGENT_RUN) {
                 runNode = node;
-                reordered.add(withMetadata(node, "Build Agent", null, null));
+                reordered.add(withMetadata(node, "Build and Run Agent", null, null));
             } else if (node.codedata() != null && node.codedata().lineRange() != null
                     && agentRegisterDetails.containsKey(node.codedata().lineRange())) {
                 reordered.add(withMetadata(node, null,
