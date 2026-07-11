@@ -197,15 +197,6 @@ public class DurableAgentHumanTaskBuilder extends CallBuilder {
         return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
-    private static String requireValue(SourceBuilder sourceBuilder, String key, String message) {
-        Optional<Property> property = sourceBuilder.getProperty(key);
-        String value = property.map(p -> p.value() == null ? "" : p.value().toString()).orElse("");
-        if (value.isBlank()) {
-            throw new IllegalStateException(message);
-        }
-        return value;
-    }
-
     private static void appendNamedArg(SourceBuilder sourceBuilder, String key) {
         Optional<Property> property = sourceBuilder.getProperty(key);
         String value = property.map(p -> p.value() == null ? "" : p.value().toString()).orElse("");

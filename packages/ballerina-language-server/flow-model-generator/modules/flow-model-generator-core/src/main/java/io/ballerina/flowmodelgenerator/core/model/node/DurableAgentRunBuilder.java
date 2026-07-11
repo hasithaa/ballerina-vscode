@@ -441,12 +441,4 @@ public class DurableAgentRunBuilder extends CallBuilder {
         return property.types().stream()
                 .anyMatch(type -> type.fieldType() == Property.ValueType.PROMPT && type.selected());
     }
-
-
-    private static String requireValue(SourceBuilder sourceBuilder, String key, String message) {
-        return sourceBuilder.getProperty(key)
-                .filter(p -> p.value() != null && !p.value().toString().isEmpty())
-                .map(Property::toSourceCode)
-                .orElseThrow(() -> new IllegalStateException(message));
-    }
 }
