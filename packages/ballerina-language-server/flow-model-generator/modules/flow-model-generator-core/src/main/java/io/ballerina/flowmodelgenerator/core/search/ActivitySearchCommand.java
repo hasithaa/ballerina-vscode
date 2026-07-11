@@ -160,8 +160,13 @@ class ActivitySearchCommand extends SearchCommand {
         if (!matchesQuery(label)) {
             return;
         }
+        // In durable-agent mode the builtin item routes to the agent registration form
+        // (registerActivity with bindings) instead of the workflow callActivity form.
+        NodeKind builtinKind = itemNodeKind == NodeKind.DURABLE_AGENT_ADD_ACTIVITY
+                ? NodeKind.DURABLE_AGENT_ADD_ACTIVITY
+                : NodeKind.BUILTIN_ACTIVITY;
         Codedata codedata = new Codedata.Builder<>(null)
-                .node(NodeKind.BUILTIN_ACTIVITY)
+                .node(builtinKind)
                 .org(WORKFLOW_ORG)
                 .module(ACTIVITY_MODULE)
                 .symbol(symbol)

@@ -21,10 +21,12 @@ package io.ballerina.flowmodelgenerator.core.model.node;
 import io.ballerina.compiler.api.symbols.FunctionSymbol;
 import io.ballerina.compiler.api.symbols.SymbolKind;
 import io.ballerina.compiler.syntax.tree.SyntaxKind;
+import io.ballerina.flowmodelgenerator.core.model.Codedata;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Option;
 import io.ballerina.flowmodelgenerator.core.model.Property;
 import io.ballerina.flowmodelgenerator.core.model.SourceBuilder;
+import io.ballerina.flowmodelgenerator.core.model.node.builtin.BuiltinActivityStrategy;
 import io.ballerina.flowmodelgenerator.core.utils.WorkflowUtil;
 import io.ballerina.modelgenerator.commons.FunctionData;
 import io.ballerina.modelgenerator.commons.PackageUtil;
@@ -38,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.ACTIVITY_MODULE;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.AGENT_CONTEXT_CLASS_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITY_METHOD_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.REGISTER_ACTIVITY_DESCRIPTION;
@@ -49,6 +52,13 @@ import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_O
  * Registers a workflow activity as a durable agent tool. Generates
  * {@code check durableAgentContext.registerActivity(<activity>);}.
  *
+ * <p>Built-in activities (Call REST API, Call SOAP API, Send Email) are registered as-is — no wrapper
+ * function. Their form reuses the built-in strategy fields plus a connection selector; every value the
+ * user fills is fixed at registration via {@code bindings} (the connection travels as a
+ * {@code "connection:<name>"} marker), and everything left blank stays model-controlled:
+ * {@code check durableAgentContext.registerActivity(activity:callRestAPI, name = ..., description = ...,
+ * bindings = {connection: api, method: "GET"});}
+ *
  * @since 1.8.0
  */
 public class DurableAgentAddActivityBuilder extends CallBuilder {
@@ -56,6 +66,17 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
     public static final String ACTIVITY_KEY = "activity";
     public static final String ACTIVITY_LABEL = "Activity";
     public static final String ACTIVITY_DOC = "The @workflow:Activity function to expose as an agent tool";
+
+    public static final String TOOL_NAME_KEY = "name";
+    public static final String TOOL_NAME_LABEL = "Tool Name";
+    public static final String TOOL_NAME_DOC = "The tool name advertised to the model. Defaults to the function name";
+    public static final String TOOL_DESCRIPTION_KEY = "description";
+    public static final String TOOL_DESCRIPTION_LABEL = "Description";
+    public static final String TOOL_DESCRIPTION_DOC =
+            "Tells the model what this tool does and when to use it";
+
+    private static final String NEW_CONNECTION_SENTINEL = "NEW_CONNECTION";
+    private static final String ACTIVITY_MODULE_PREFIX = "activity";
 
     @Override
     protected NodeKind getFunctionNodeKind() {
@@ -81,6 +102,15 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
     @Override
     public void setConcreteTemplateData(TemplateContext context) {
         setConcreteConstData();
+
+        // Built-in activity selected from the agent's activity search: render the built-in
+        // registration form (connection + strategy fields become bindings) instead of the
+        // user-activity selector.
+        BuiltinActivityStrategy strategy = resolveBuiltinStrategy(context.codedata());
+        if (strategy != null) {
+            buildBuiltinRegistrationTemplate(context, strategy);
+            return;
+        }
 
         // When the node comes from the activity search list, its codedata symbol is the chosen
         // activity function — pre-select it. (The palette entry's symbol is the method name.)
@@ -111,8 +141,71 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
         properties().checkError(true);
     }
 
+    /**
+     * Form for registering a built-in activity as an agent tool. The connection selector and the
+     * strategy's own fields (method/path for REST, the email fields, …) act as bindings: whatever the
+     * user fills is fixed at registration, whatever stays blank remains model-controlled. Tool name and
+     * description shape what the model sees.
+     */
+    private void buildBuiltinRegistrationTemplate(TemplateContext context, BuiltinActivityStrategy strategy) {
+        metadata().label(strategy.getLabel()).description(strategy.getDescription());
+        codedata()
+                .node(NodeKind.DURABLE_AGENT_ADD_ACTIVITY)
+                .org(WORKFLOW_ORG)
+                .module(ACTIVITY_MODULE)
+                .object(AGENT_CONTEXT_CLASS_NAME)
+                .symbol(strategy.activityFunctionSymbol());
+
+        addStringProperty(TOOL_NAME_KEY, TOOL_NAME_LABEL, TOOL_NAME_DOC, strategy.activityFunctionSymbol(), true);
+        properties().custom()
+                .metadata()
+                    .label(TOOL_DESCRIPTION_LABEL)
+                    .description(TOOL_DESCRIPTION_DOC)
+                    .stepOut()
+                .type()
+                    .fieldType(Property.ValueType.DOC_TEXT)
+                    .ballerinaType("string")
+                    .selected(true)
+                    .stepOut()
+                .value("")
+                .placeholder(strategy.getDescription())
+                .editable(true)
+                .optional(true)
+                .stepOut()
+                .addProperty(TOOL_DESCRIPTION_KEY);
+
+        properties().connectionSelector(NEW_CONNECTION_SENTINEL,
+                strategy.searchNodesKind(), strategy.connectors());
+        strategy.setFormProperties(this, context);
+        properties().checkError(true);
+    }
+
+    private void addStringProperty(String key, String label, String doc, String placeholder, boolean optional) {
+        properties().custom()
+                .metadata()
+                    .label(label)
+                    .description(doc)
+                    .stepOut()
+                .type()
+                    .fieldType(Property.ValueType.TEXT)
+                    .ballerinaType("string")
+                    .selected(true)
+                    .stepOut()
+                .value("")
+                .placeholder(placeholder)
+                .editable(true)
+                .optional(optional)
+                .stepOut()
+                .addProperty(key);
+    }
+
     @Override
     public Map<Path, List<TextEdit>> toSource(SourceBuilder sourceBuilder) {
+        BuiltinActivityStrategy strategy = resolveBuiltinStrategy(sourceBuilder.flowNode.codedata());
+        if (strategy != null) {
+            return toSourceBuiltinRegistration(sourceBuilder, strategy);
+        }
+
         String ctxParamName = WorkflowUtil.resolveAgentContextParamName(sourceBuilder);
         Optional<Property> activityProperty = sourceBuilder.getProperty(ACTIVITY_KEY);
         String activity = activityProperty.map(p -> p.value() == null ? "" : p.value().toString()).orElse("");
@@ -134,6 +227,78 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                 .textEdit()
                 .acceptImport(WORKFLOW_ORG, WORKFLOW_MODULE)
                 .build();
+    }
+
+    /**
+     * Generates the as-is registration of a built-in activity: filled form values become
+     * {@code bindings} (fixed arguments the model never sees), the connection is referenced by its
+     * module-level variable name, and the built-in function itself is passed unwrapped.
+     */
+    private Map<Path, List<TextEdit>> toSourceBuiltinRegistration(SourceBuilder sourceBuilder,
+                                                                  BuiltinActivityStrategy strategy) {
+        String ctxParamName = WorkflowUtil.resolveAgentContextParamName(sourceBuilder);
+
+        String connection = sourceBuilder.getProperty(Property.CONNECTION_KEY)
+                .map(p -> p.value() == null ? "" : p.value().toString())
+                .orElse("");
+        if (connection.isEmpty() || NEW_CONNECTION_SENTINEL.equals(connection)) {
+            throw new IllegalStateException("A connection is required for the built-in activity. "
+                    + "Pick a module-level final client from the Connection dropdown.");
+        }
+
+        List<String> bindingFields = new ArrayList<>();
+        bindingFields.add(Property.CONNECTION_KEY + ": " + connection);
+        bindingFields.addAll(strategy.getCallActivityArgs(sourceBuilder));
+
+        StringBuilder callArgs = new StringBuilder();
+        callArgs.append(ACTIVITY_MODULE_PREFIX).append(":").append(strategy.activityFunctionSymbol());
+        String toolName = stringPropertyValue(sourceBuilder, TOOL_NAME_KEY);
+        if (!toolName.isEmpty()) {
+            callArgs.append(", ").append(TOOL_NAME_KEY).append(" = ").append(quoted(toolName));
+        }
+        String toolDescription = stringPropertyValue(sourceBuilder, TOOL_DESCRIPTION_KEY);
+        if (!toolDescription.isEmpty()) {
+            callArgs.append(", ").append(TOOL_DESCRIPTION_KEY).append(" = ").append(quoted(toolDescription));
+        }
+        callArgs.append(", bindings = {").append(String.join(", ", bindingFields)).append("}");
+
+        sourceBuilder.token()
+                .keyword(SyntaxKind.CHECK_KEYWORD)
+                .name(ctxParamName)
+                .keyword(SyntaxKind.DOT_TOKEN)
+                .name(REGISTER_ACTIVITY_METHOD_NAME)
+                .keyword(SyntaxKind.OPEN_PAREN_TOKEN)
+                .name(callArgs.toString())
+                .keyword(SyntaxKind.CLOSE_PAREN_TOKEN)
+                .endOfStatement();
+
+        sourceBuilder.textEdit()
+                .acceptImport(WORKFLOW_ORG, WORKFLOW_MODULE)
+                .acceptImport(WORKFLOW_ORG, ACTIVITY_MODULE);
+        for (BuiltinActivityStrategy.Import imp : strategy.getRequiredImports(sourceBuilder)) {
+            sourceBuilder.acceptImport(imp.org(), imp.module());
+        }
+        return sourceBuilder.build();
+    }
+
+    private static BuiltinActivityStrategy resolveBuiltinStrategy(Codedata codedata) {
+        if (codedata == null || !ACTIVITY_MODULE.equals(codedata.module())) {
+            return null;
+        }
+        return ActivityCallBuilder.BUILTIN_STRATEGY_MAP.get(codedata.symbol());
+    }
+
+    private static String stringPropertyValue(SourceBuilder sourceBuilder, String key) {
+        return sourceBuilder.getProperty(key)
+                .map(p -> p.value() == null ? "" : p.value().toString().trim())
+                .orElse("");
+    }
+
+    private static String quoted(String value) {
+        if (value.startsWith("\"") && value.endsWith("\"") && value.length() >= 2) {
+            return value;
+        }
+        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
     private List<Option> getActivityFunctions(TemplateContext context) {

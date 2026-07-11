@@ -578,7 +578,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                     position: { startLine: targetRef.current.startLine, endLine: targetRef.current.endLine },
                     filePath: model?.fileName,
                     queryMap: durableAgentActivityListRef.current
-                        ? { excludeBuiltins: "true", nodeKind: "DURABLE_AGENT_ADD_ACTIVITY" }
+                        ? { nodeKind: "DURABLE_AGENT_ADD_ACTIVITY" }
                         : undefined,
                     searchKind: "ACTIVITY_CALL",
                 });
@@ -1093,7 +1093,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 offset: 0,
                 includeAvailableFunctions: "true",
                 ...(searchKind === "ACTIVITY_CALL" && durableAgentActivityListRef.current
-                    ? { excludeBuiltins: "true", nodeKind: "DURABLE_AGENT_ADD_ACTIVITY" }
+                    ? { nodeKind: "DURABLE_AGENT_ADD_ACTIVITY" }
                     : {}),
             },
             searchKind,
@@ -1593,8 +1593,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
 
             case "DURABLE_AGENT_ADD_ACTIVITY":
                 // First click from the palette opens the same searchable activity list the
-                // workflow "Call Activity" node uses, but without the prebuilt (builtin)
-                // activities — durable agents register project activities as tools.
+                // workflow "Call Activity" node uses, including the prebuilt (builtin)
+                // activities — those are registered as-is with bindings.
                 if (sidePanelView === SidePanelView.NODE_LIST) {
                     durableAgentActivityListRef.current = true;
                     setShowProgressIndicator(true);
@@ -1603,7 +1603,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                         .search({
                             position: { startLine: targetRef.current.startLine, endLine: targetRef.current.endLine },
                             filePath: model?.fileName || fileName,
-                            queryMap: { excludeBuiltins: "true", nodeKind: "DURABLE_AGENT_ADD_ACTIVITY" },
+                            queryMap: { nodeKind: "DURABLE_AGENT_ADD_ACTIVITY" },
                             searchKind: "ACTIVITY_CALL",
                         })
                         .then((response) => {
@@ -1625,7 +1625,32 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                     break;
                 }
 
-                // Selecting an activity from the list is a complete choice — generate the
+                // A prebuilt (builtin) activity needs its registration form: connection +
+                // fixed arguments (bindings) + tool name/description.
+                if (node.codedata?.module === "workflow.activity") {
+                    selectedClientName.current = category;
+                    setShowProgressIndicator(true);
+                    rpcClient
+                        .getBIDiagramRpcClient()
+                        .getNodeTemplate({
+                            position: targetRef.current.startLine,
+                            filePath: model?.fileName || fileName,
+                            id: node.codedata,
+                        })
+                        .then((response) => {
+                            selectedNodeRef.current = response.flowNode;
+                            nodeTemplateRef.current = response.flowNode;
+                            showEditForm.current = false;
+                            setSidePanelView(SidePanelView.FORM);
+                            setShowSidePanel(true);
+                        })
+                        .finally(() => {
+                            setShowProgressIndicator(false);
+                        });
+                    break;
+                }
+
+                // Selecting a project activity from the list is a complete choice — generate the
                 // registerActivity statement directly (no intermediate form) and close the panel.
                 setShowProgressIndicator(true);
                 rpcClient
