@@ -355,11 +355,15 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                         documentation: "The data type this activity returns.",
                     };
                 } else if (returnTypeInfo?.kind === "undeterminable") {
+                    // The action's return type is not a data type (object/stream/…), so it cannot be
+                    // used as the activity's return type as-is. Default to json — a safe serializable
+                    // choice — and let the user pick the actual type.
                     returnField = {
                         ...returnField,
-                        value: returnTypeInfo.type || returnField.value,
+                        value: "json",
                         editable: true,
-                        documentation: "We cannot determine the return type. Select the type this activity returns.",
+                        documentation: "We cannot determine the return type — defaulted to json. " +
+                            "Select the type this activity returns.",
                     };
                 } else {
                     returnField = {
@@ -437,7 +441,10 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
         // anydata case, where the field value may not be submitted). Write it into both `type` (the
         // result variable type) and `targetType` (the type-infer param genActivity resolves the return
         // from) — for dependent actions genActivity reads targetType, so setting only `type` is ignored.
-        const returnType = data["type"] ?? returnTypeInfoRef.current?.type;
+        // Undeterminable signatures (object/stream/…) are never used as a fallback — json is the
+        // default the form seeds in that case.
+        const returnType = data["type"]
+            ?? (returnTypeInfoRef.current?.kind === "anydata" ? returnTypeInfoRef.current?.type : undefined);
         if (returnType !== undefined && returnType !== "") {
             if (newProperties["type"]) {
                 newProperties["type"] = { ...newProperties["type"], value: String(returnType) };

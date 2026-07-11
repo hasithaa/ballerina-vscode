@@ -306,13 +306,20 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
         Package currentPackage = PackageUtil.loadProject(context.workspaceManager(), context.filePath())
                 .currentPackage();
         PackageUtil.getCompilation(currentPackage);
-        currentPackage.modules().forEach(module ->
+        // A module whose compilation fails (e.g. an unresolvable dependency) is skipped so the
+        // selector still lists the activities from the modules that do resolve.
+        currentPackage.modules().forEach(module -> {
+            try {
                 module.getCompilation().getSemanticModel().moduleSymbols().stream()
                         .filter(symbol -> symbol.kind() == SymbolKind.FUNCTION)
                         .map(symbol -> (FunctionSymbol) symbol)
                         .filter(WorkflowUtil::isActivityFunction)
                         .forEach(funcSymbol -> funcSymbol.getName().ifPresent(name ->
-                                options.add(new Option(name, name)))));
+                                options.add(new Option(name, name))));
+            } catch (RuntimeException e) {
+                // Skip unresolvable module.
+            }
+        });
         return options;
     }
 }
