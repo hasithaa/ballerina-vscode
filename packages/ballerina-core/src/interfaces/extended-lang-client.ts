@@ -1054,7 +1054,7 @@ export interface ActivityActionAnalysis {
     /** When unsupported, the human-readable reasons. */
     reasons: string[];
     /** The derived activity parameters. */
-    params: { name: string; type: string; required: boolean }[];
+    params: { name: string; type: string; required: boolean; description?: string }[];
     /** The derived activity return type (success type, without |error). */
     returnType: string;
     /** When the action returns a stream, its element type T (the activity returns T[]); else absent. */

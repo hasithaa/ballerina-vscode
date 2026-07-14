@@ -328,8 +328,14 @@ public class ActivityGenerator {
                 String paramName = paramProperties.get(Property.VARIABLE_KEY).value().toString();
                 Property property = paramProperties.get(Property.PARAMETER_DESCRIPTION_KEY);
                 paramList.add(paramType + " " + paramName);
-                if (hasDescription && property != null) {
-                    sourceBuilder.token().parameterDoc(paramName, property.value().toString());
+                if (hasDescription) {
+                    // Every parameter gets a doc line when the function is documented — otherwise the
+                    // generated activity raises undocumented-parameter warnings (BCE20001).
+                    String paramDoc = property != null && property.value() != null
+                            && !property.value().toString().isBlank()
+                            ? property.value().toString()
+                            : "The " + paramName + " value";
+                    sourceBuilder.token().parameterDoc(paramName, paramDoc);
                 }
             }
         }

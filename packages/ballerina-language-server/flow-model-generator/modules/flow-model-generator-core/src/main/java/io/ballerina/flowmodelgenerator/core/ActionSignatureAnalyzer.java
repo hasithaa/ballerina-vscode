@@ -19,6 +19,7 @@
 package io.ballerina.flowmodelgenerator.core;
 
 import io.ballerina.compiler.api.SemanticModel;
+import io.ballerina.compiler.api.symbols.Documentation;
 import io.ballerina.compiler.api.symbols.FunctionTypeSymbol;
 import io.ballerina.compiler.api.symbols.MethodSymbol;
 import io.ballerina.compiler.api.symbols.ParameterKind;
@@ -64,11 +65,13 @@ public final class ActionSignatureAnalyzer {
     /**
      * A derived activity parameter.
      *
-     * @param name     the parameter name (matches the action parameter / record field)
-     * @param type     the derived (anydata) type signature
-     * @param required whether the parameter is required (always included, not toggleable)
+     * @param name        the parameter name (matches the action parameter / record field)
+     * @param type        the derived (anydata) type signature
+     * @param required    whether the parameter is required (always included, not toggleable)
+     * @param description the action's documentation for the parameter (empty when undocumented);
+     *                    used as the generated activity parameter's doc line
      */
-    public record DerivedParam(String name, String type, boolean required) {
+    public record DerivedParam(String name, String type, boolean required, String description) {
     }
 
     /**
@@ -111,10 +114,14 @@ public final class ActionSignatureAnalyzer {
                     pathReasons.add("Path parameter '" + pathParam.name() + "' is not a data type");
                     continue;
                 }
-                pathParams.add(new DerivedParam(pathParam.name(), pathParam.type(), true));
+                pathParams.add(new DerivedParam(pathParam.name(), pathParam.type(), true,
+                        pathParam.description() == null ? "" : pathParam.description()));
             }
         }
-        Analysis analysis = analyze(methodSymbol.typeDescriptor(), semanticModel);
+        Map<String, String> paramDocs = methodSymbol.documentation()
+                .map(Documentation::parameterMap)
+                .orElse(Map.of());
+        Analysis analysis = analyze(methodSymbol.typeDescriptor(), semanticModel, paramDocs);
         List<String> reasons = new ArrayList<>(pathReasons);
         reasons.addAll(analysis.reasons());
         List<DerivedParam> params = new ArrayList<>(pathParams);
@@ -124,6 +131,11 @@ public final class ActionSignatureAnalyzer {
     }
 
     public static Analysis analyze(FunctionTypeSymbol functionTypeSymbol, SemanticModel semanticModel) {
+        return analyze(functionTypeSymbol, semanticModel, Map.of());
+    }
+
+    private static Analysis analyze(FunctionTypeSymbol functionTypeSymbol, SemanticModel semanticModel,
+                                    Map<String, String> paramDocs) {
         TypeSymbol anydata = semanticModel.types().ANYDATA;
         List<String> reasons = new ArrayList<>();
         List<DerivedParam> params = new ArrayList<>();
@@ -157,9 +169,14 @@ public final class ActionSignatureAnalyzer {
             } else {
                 // REQUIRED or DEFAULTABLE
                 boolean required = kind == ParameterKind.REQUIRED;
-                addParam(params, reasons, name, param.typeDescriptor(), required, anydata, semanticModel);
+                addParam(params, reasons, name, param.typeDescriptor(), required, anydata, semanticModel,
+                        paramDocs.getOrDefault(name, ""));
             }
         }
+
+        // Rest parameters are exposed separately from params() in the semantic API.
+        functionTypeSymbol.restParam().ifPresent(restParam ->
+                reasons.add("Rest parameter '" + restParam.getName().orElse("") + "' is not supported"));
 
         // For dependent returns the typedesc constraint (when informative) is offered as the default.
         String returnType = dependentReturn ? dependentReturnDefault : "";
@@ -183,7 +200,7 @@ public final class ActionSignatureAnalyzer {
 
     private static void addParam(List<DerivedParam> params, List<String> reasons, String name,
                                  TypeSymbol type, boolean required, TypeSymbol anydata,
-                                 SemanticModel semanticModel) {
+                                 SemanticModel semanticModel, String description) {
         String derived = deriveDataType(type, anydata, semanticModel);
         if (derived == null) {
             reasons.add("Parameter '" + name + "' of type '"
@@ -191,7 +208,7 @@ public final class ActionSignatureAnalyzer {
                     + "' is not a data type (it must be, or contain, anydata)");
             return;
         }
-        params.add(new DerivedParam(name, derived, required));
+        params.add(new DerivedParam(name, derived, required, description == null ? "" : description));
     }
 
     private static void expandIncludedRecord(TypeSymbol type, List<DerivedParam> params, List<String> reasons,
@@ -206,7 +223,11 @@ public final class ActionSignatureAnalyzer {
         for (Map.Entry<String, RecordFieldSymbol> entry : fields.entrySet()) {
             RecordFieldSymbol field = entry.getValue();
             boolean required = !field.isOptional() && !field.hasDefaultValue();
-            addParam(params, reasons, entry.getKey(), field.typeDescriptor(), required, anydata, semanticModel);
+            String fieldDoc = field.documentation()
+                    .flatMap(Documentation::description)
+                    .orElse("");
+            addParam(params, reasons, entry.getKey(), field.typeDescriptor(), required, anydata, semanticModel,
+                    fieldDoc);
         }
     }
 

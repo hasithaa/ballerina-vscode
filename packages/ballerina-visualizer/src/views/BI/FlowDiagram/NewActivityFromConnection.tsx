@@ -280,6 +280,7 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
 
         for (const param of analysis.params || []) {
             const isChecked = checked[param.name] === true;
+            const descriptionPrefix = param.description ? `${param.description} — ` : "";
             if (param.required) {
                 wizardFields.push({
                     key: param.name,
@@ -287,7 +288,7 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                     type: "FLAG",
                     optional: true,
                     editable: true,
-                    documentation: `${param.type} (required) — check to expose as an activity parameter, uncheck to set a fixed value.`,
+                    documentation: `${descriptionPrefix}${param.type} (required) — check to expose as an activity parameter, uncheck to set a fixed value.`,
                     value: isChecked,
                     types: [{ fieldType: "FLAG", selected: true }],
                     enabled: true,
@@ -318,7 +319,7 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                     optional: true,
                     editable: true,
                     advanced: true,
-                    documentation: `${param.type} — check to expose as an activity parameter; unchecked, the action's default is used.`,
+                    documentation: `${descriptionPrefix}${param.type} — check to expose as an activity parameter; unchecked, the action's default is used.`,
                     value: isChecked,
                     types: [{ fieldType: "FLAG", selected: true }],
                     enabled: true,
@@ -481,7 +482,12 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
         for (const param of analysis.params || []) {
             const isChecked = checked[param.name] === true;
             if (isChecked) {
-                parametersValue[param.name] = createDefaultParameterValue({ value: param.name, type: param.type });
+                parametersValue[param.name] = createDefaultParameterValue({
+                    value: param.name,
+                    type: param.type,
+                    // Carried into the generated activity's parameter doc line.
+                    parameterDescription: param.description,
+                });
             }
             const property = newProperties[param.name];
             if (!property) {
