@@ -59,6 +59,8 @@ public class ActivityGenerator {
 
     // Short, conventional name for the result variable inside the generated activity body.
     private static final String RESULT_VARIABLE = "result";
+    // Name of the intermediate stream variable when the action's stream return is collected.
+    private static final String STREAM_VARIABLE = "streamResult";
     // Fallback databinding type when the action's return type is ambiguous (see normalizeReturnType).
     private static final String DEFAULT_RETURN_TYPE = "json";
     private static final String ERROR_UNION_SUFFIX = "|error";
@@ -84,13 +86,15 @@ public class ActivityGenerator {
      * @param emptyActionArgs    when {@code true}, the wrapped action call is generated with no
      *                           arguments (used when the action has non-data types the user must
      *                           fill in manually)
+     * @param streamElementType  when the action returns a stream, its element type {@code T}: the
+     *                           body collects the stream and returns {@code T[]}; else null
      * @param filePath           path of the file to add the activity function to
      * @param workspaceManager   the workspace manager
      * @return the text edits to apply
      */
     public JsonElement genActivity(JsonElement node, String activityName, JsonElement activityParameters,
                                    String connectionName, String description, boolean emptyActionArgs,
-                                   Path filePath, WorkspaceManager workspaceManager) {
+                                   String streamElementType, Path filePath, WorkspaceManager workspaceManager) {
         FlowNode flowNode = gson.fromJson(node, FlowNode.class);
         Property activityParams = gson.fromJson(activityParameters, Property.class);
         NodeKind nodeKind = flowNode.codedata().node();
@@ -159,10 +163,19 @@ public class ActivityGenerator {
             sourceBuilder.token().keyword(SyntaxKind.RETURNS_KEYWORD).name("error?");
         }
 
-        // Body: invoke the action on the connection parameter. Use a short, fixed result variable
-        // name ("result") since it is local to the generated function body.
+        // Body: invoke the action on the module-level connection. Use a short, fixed result variable
+        // name ("result") since it is local to the generated function body. When the action returns a
+        // stream, the stream is collected into an array of its element type after the call.
+        boolean collectStream = streamElementType != null && !streamElementType.isBlank();
         sourceBuilder.token().keyword(SyntaxKind.OPEN_BRACE_TOKEN);
-        if (!returnType.isEmpty()) {
+        if (collectStream) {
+            sourceBuilder.token()
+                    .name("var")
+                    .whiteSpace()
+                    .name(STREAM_VARIABLE)
+                    .whiteSpace()
+                    .keyword(SyntaxKind.EQUAL_TOKEN);
+        } else if (!returnType.isEmpty()) {
             sourceBuilder.token()
                     .name(returnType)
                     .whiteSpace()
@@ -194,7 +207,21 @@ public class ActivityGenerator {
                     .functionParameters(flowNode, ignoredKeys);
         }
 
-        if (!returnType.isEmpty()) {
+        if (collectStream) {
+            // <T>[] result = check from var item in streamResult select item; return result;
+            sourceBuilder.token()
+                    .name(streamElementType + "[]")
+                    .whiteSpace()
+                    .name(RESULT_VARIABLE)
+                    .whiteSpace()
+                    .keyword(SyntaxKind.EQUAL_TOKEN)
+                    .keyword(SyntaxKind.CHECK_KEYWORD)
+                    .name("from var item in " + STREAM_VARIABLE + " select item")
+                    .endOfStatement()
+                    .keyword(SyntaxKind.RETURN_KEYWORD)
+                    .name(RESULT_VARIABLE)
+                    .endOfStatement();
+        } else if (!returnType.isEmpty()) {
             sourceBuilder.token()
                     .keyword(SyntaxKind.RETURN_KEYWORD)
                     .name(RESULT_VARIABLE)

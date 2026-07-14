@@ -20,15 +20,19 @@ package io.ballerina.flowmodelgenerator.core;
 
 import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.FunctionTypeSymbol;
+import io.ballerina.compiler.api.symbols.MethodSymbol;
 import io.ballerina.compiler.api.symbols.ParameterKind;
 import io.ballerina.compiler.api.symbols.ParameterSymbol;
 import io.ballerina.compiler.api.symbols.RecordFieldSymbol;
 import io.ballerina.compiler.api.symbols.RecordTypeSymbol;
+import io.ballerina.compiler.api.symbols.ResourceMethodSymbol;
 import io.ballerina.compiler.api.symbols.StreamTypeSymbol;
 import io.ballerina.compiler.api.symbols.TypeDescKind;
 import io.ballerina.compiler.api.symbols.TypeSymbol;
 import io.ballerina.compiler.api.symbols.UnionTypeSymbol;
+import io.ballerina.flowmodelgenerator.core.utils.ParamUtils;
 import io.ballerina.modelgenerator.commons.CommonUtils;
+import io.ballerina.modelgenerator.commons.ParameterData;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -78,6 +82,39 @@ public final class ActionSignatureAnalyzer {
      */
     public record Analysis(boolean supported, List<String> reasons, List<DerivedParam> params,
                            String returnType, String streamElementType) {
+    }
+
+    /**
+     * Analyzes a connector action method. For resource methods, the resource path parameters are
+     * included as required activity parameters (they are referenced inside the resource path of the
+     * generated action call).
+     */
+    public static Analysis analyze(MethodSymbol methodSymbol, SemanticModel semanticModel) {
+        List<DerivedParam> pathParams = new ArrayList<>();
+        List<String> pathReasons = new ArrayList<>();
+        if (methodSymbol instanceof ResourceMethodSymbol) {
+            TypeSymbol anydata = semanticModel.types().ANYDATA;
+            ParamUtils.ResourcePathTemplate resourcePathTemplate = ParamUtils.buildResourcePathTemplate(
+                    semanticModel, methodSymbol, semanticModel.types().ERROR);
+            for (ParameterData pathParam : resourcePathTemplate.pathParams()) {
+                if (pathParam.kind() == ParameterData.Kind.PATH_REST_PARAM) {
+                    pathReasons.add("Rest resource path parameter is not supported");
+                    continue;
+                }
+                if (pathParam.typeSymbol() == null || !CommonUtils.subTypeOf(pathParam.typeSymbol(), anydata)) {
+                    pathReasons.add("Path parameter '" + pathParam.name() + "' is not a data type");
+                    continue;
+                }
+                pathParams.add(new DerivedParam(pathParam.name(), pathParam.type(), true));
+            }
+        }
+        Analysis analysis = analyze(methodSymbol.typeDescriptor(), semanticModel);
+        List<String> reasons = new ArrayList<>(pathReasons);
+        reasons.addAll(analysis.reasons());
+        List<DerivedParam> params = new ArrayList<>(pathParams);
+        params.addAll(analysis.params());
+        return new Analysis(reasons.isEmpty(), reasons, params, analysis.returnType(),
+                analysis.streamElementType());
     }
 
     public static Analysis analyze(FunctionTypeSymbol functionTypeSymbol, SemanticModel semanticModel) {
