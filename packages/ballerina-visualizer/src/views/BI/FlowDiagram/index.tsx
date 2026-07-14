@@ -2357,12 +2357,31 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     };
 
     const handleActivityFromConnectionCreated = async (activityName: string) => {
-        // After the activity function is generated, open its call form at the current workflow
-        // position with the new activity selected — the workflow data is wired into the call there.
+        // After the activity function is generated, open its call form with the new activity selected —
+        // the workflow data is wired into the call there.
         setShowProgressIndicator(true);
         try {
+            // genActivity rewrites the file (adding the activity and possibly imports), shifting the
+            // position the create flow was launched from — using the stale position makes the save fail
+            // ("Cannot find a line with the character offset"). Re-resolve the insertion point from a
+            // fresh flow model: after the last statement, or just inside the body of an empty workflow.
+            const refreshed = await rpcClient.getBIDiagramRpcClient().getFlowModel({});
+            const refreshedNodes = refreshed?.flowModel?.nodes ?? [];
+            const lastNode = refreshedNodes[refreshedNodes.length - 1];
+            const anchorLine = lastNode?.codedata?.node === "EVENT_START"
+                ? lastNode?.codedata?.lineRange?.startLine
+                : lastNode?.codedata?.lineRange?.endLine;
+            if (anchorLine) {
+                changeTargetRange({
+                    fileName: lastNode?.codedata?.lineRange?.fileName,
+                    startLine: anchorLine,
+                    endLine: anchorLine,
+                });
+            }
+            const insertLine = anchorLine ?? targetRef.current.startLine;
+
             const response = await rpcClient.getBIDiagramRpcClient().search({
-                position: { startLine: targetRef.current.startLine, endLine: targetRef.current.endLine },
+                position: { startLine: insertLine, endLine: insertLine },
                 filePath: model?.fileName,
                 queryMap: undefined,
                 searchKind: "ACTIVITY_CALL",
@@ -2378,7 +2397,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
 
             if (newActivityNode) {
                 const template = await rpcClient.getBIDiagramRpcClient().getNodeTemplate({
-                    position: targetRef.current.startLine,
+                    position: insertLine,
                     filePath: model?.fileName,
                     id: newActivityNode.codedata,
                 });

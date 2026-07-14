@@ -341,16 +341,21 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 enabled: true,
             });
         } else if (analysis.returnType) {
+            // A derived union leaves the user a choice, so keep it editable (narrowing it is up to
+            // them — an incompatible edit is theirs to fix). Single types stay read-only.
+            const isUnion = analysis.returnType.includes("|");
             wizardFields.push({
                 key: RETURN_TYPE_KEY,
                 label: "Return Type",
                 type: "TYPE",
                 optional: false,
-                editable: false,
+                editable: isUnion,
                 documentation: analysis.streamElementType
                     ? "The action returns a stream; the activity collects it and returns an array."
-                    : "The data type this activity returns.",
-                value: analysis.returnType,
+                    : isUnion
+                      ? "The action returns a union — narrow it to the type this activity should return."
+                      : "The data type this activity returns.",
+                value: values[RETURN_TYPE_KEY] ?? analysis.returnType,
                 types: [{ fieldType: "TYPE", selected: true }],
                 enabled: true,
             });
@@ -491,11 +496,11 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
         }
 
         // Return type: for dependently-typed actions the user-provided T (activity returns T|error),
-        // falling back to the typedesc-constraint default; otherwise the derived type. Drive both the
-        // result type and the databinding target type.
+        // falling back to the typedesc-constraint default; otherwise the derived type — which the user
+        // may have narrowed when it is a union. Drive both the result type and the databinding target.
         const returnType = analysis.dependentReturn
             ? String(data[RETURN_TYPE_KEY] || analysis.returnType || DEFAULT_DEPENDENT_RETURN_TYPE)
-            : analysis.returnType;
+            : String(data[RETURN_TYPE_KEY] || analysis.returnType || "");
         if (returnType) {
             for (const key of ["type", "targetType"]) {
                 if (newProperties[key]) {
