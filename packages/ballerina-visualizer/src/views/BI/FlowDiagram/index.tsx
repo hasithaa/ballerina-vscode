@@ -2349,13 +2349,9 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
         setShowSidePanel(true);
     };
 
-    const handleActivityFromConnectionCreated = async (
-        activityName: string,
-        callArgs: Record<string, string> = {}
-    ) => {
-        // After the activity function is generated, insert its call into the workflow at the current
-        // position — pre-filled with the expressions entered in the create form, so there is no second
-        // form to fill.
+    const handleActivityFromConnectionCreated = async (activityName: string) => {
+        // After the activity function is generated, open its call form at the current workflow
+        // position with the new activity selected — the workflow data is wired into the call there.
         setShowProgressIndicator(true);
         try {
             const response = await rpcClient.getBIDiagramRpcClient().search({
@@ -2379,47 +2375,19 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                     filePath: model?.fileName,
                     id: newActivityNode.codedata,
                 });
-                const callNode = template.flowNode;
-                // The call node's parameters are the activity's parameters (same names as the action
-                // params filled in the create form). Seed them with the captured expressions.
-                if (callNode?.properties) {
-                    for (const [key, value] of Object.entries(callArgs)) {
-                        const property = (callNode.properties as Record<string, { value?: unknown }>)[key];
-                        if (property) {
-                            property.value = value;
-                        }
-                    }
-                }
-                // genActivity rewrites and reformats the file (e.g. splitting the combined import line),
-                // which shifts the position the create flow was launched from. Re-resolve the insertion
-                // point from a fresh flow model so the call lands inside the workflow body.
-                const refreshed = await rpcClient.getBIDiagramRpcClient().getFlowModel({});
-                const refreshedNodes = refreshed?.flowModel?.nodes ?? [];
-                const lastNode = refreshedNodes[refreshedNodes.length - 1];
-                // EVENT_START spans the whole body; its endLine is the closing brace (module level).
-                // For an empty workflow (only EVENT_START) insert at its startLine (just inside the body);
-                // otherwise append after the last statement's endLine.
-                const anchorLine = lastNode?.codedata?.node === "EVENT_START"
-                    ? lastNode?.codedata?.lineRange?.startLine
-                    : lastNode?.codedata?.lineRange?.endLine;
-                const insertLine = anchorLine ?? targetRef.current.startLine;
-                callNode.codedata.isNew = true;
-                callNode.codedata.lineRange = {
-                    fileName: refreshed?.flowModel?.fileName ?? model?.fileName,
-                    startLine: insertLine,
-                    endLine: insertLine,
-                };
-                selectedNodeRef.current = callNode;
-                nodeTemplateRef.current = callNode;
+                selectedNodeRef.current = template.flowNode;
+                nodeTemplateRef.current = template.flowNode;
                 showEditForm.current = false;
-                // Insert the call directly (no form) — the arguments are already filled in.
-                await handleOnFormSubmit(callNode);
+                // The activity list frame pushed on entry stays on the stack, so the form's back
+                // button returns to the activity list.
+                setSidePanelView(SidePanelView.FORM);
+                setShowSidePanel(true);
                 return;
             }
             // Fallback: could not resolve the new activity — just refresh the activity list.
             await handleActivityAdded();
         } catch (error) {
-            console.error(">>> Error inserting the call for the created activity", error);
+            console.error(">>> Error opening call form for the created activity", error);
             await handleActivityAdded();
         } finally {
             setShowProgressIndicator(false);
