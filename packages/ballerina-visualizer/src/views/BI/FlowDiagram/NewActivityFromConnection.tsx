@@ -104,6 +104,8 @@ enum PanelView {
 const RETURN_TYPE_KEY = "type";
 // Suffix for the inline value field shown when a parameter is not exposed as an activity parameter.
 const DEFAULT_VALUE_SUFFIX = "__default";
+// Key of the "expose the connection as a parameter" checkbox.
+const CONNECTION_AS_PARAM_KEY = "connectionAsParam";
 // Default type offered when the action's return type is inferred (dependently typed).
 const DEFAULT_DEPENDENT_RETURN_TYPE = "json";
 
@@ -261,33 +263,64 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
             },
         ];
 
+        // Expose the connection on the activity signature (built-in activity style) instead of
+        // closing over the module-level connection — useful when the caller supplies the connection.
+        wizardFields.push({
+            key: CONNECTION_AS_PARAM_KEY,
+            label: "Connection as parameter",
+            type: "FLAG",
+            optional: true,
+            editable: true,
+            documentation:
+                "Expose the connection as the activity's first parameter (like the built-in activities) instead of using the module-level connection.",
+            value: values[CONNECTION_AS_PARAM_KEY] === true,
+            types: [{ fieldType: "FLAG", selected: true }],
+            enabled: true,
+        });
+
         for (const param of analysis.params || []) {
             const isChecked = checked[param.name] === true;
-            wizardFields.push({
-                key: param.name,
-                label: param.name,
-                type: "FLAG",
-                optional: true,
-                editable: true,
-                documentation: `${param.type}${param.required ? " (required)" : ""} — check to expose as an activity parameter, uncheck to set a fixed value.`,
-                value: isChecked,
-                types: [{ fieldType: "FLAG", selected: true }],
-                enabled: true,
-            });
-            if (!isChecked) {
-                // Not exposed: the value entered here is baked into the action call inside the
-                // activity. Required parameters must have one; optional ones left empty are omitted.
+            if (param.required) {
                 wizardFields.push({
-                    key: `${param.name}${DEFAULT_VALUE_SUFFIX}`,
-                    label: `${param.name} value`,
-                    type: "EXPRESSION",
-                    optional: !param.required,
+                    key: param.name,
+                    label: param.name,
+                    type: "FLAG",
+                    optional: true,
                     editable: true,
-                    documentation: param.required
-                        ? `Value used for '${param.name}' in the action call (required).`
-                        : `Value used for '${param.name}' in the action call; leave empty to use the action's default.`,
-                    value: values[`${param.name}${DEFAULT_VALUE_SUFFIX}`] ?? "",
-                    types: [{ fieldType: "EXPRESSION", ballerinaType: param.type, selected: true }],
+                    documentation: `${param.type} (required) — check to expose as an activity parameter, uncheck to set a fixed value.`,
+                    value: isChecked,
+                    types: [{ fieldType: "FLAG", selected: true }],
+                    enabled: true,
+                });
+                if (!isChecked) {
+                    // A required parameter that is not exposed must get its value here — it is baked
+                    // into the action call inside the activity.
+                    wizardFields.push({
+                        key: `${param.name}${DEFAULT_VALUE_SUFFIX}`,
+                        label: `${param.name} value`,
+                        type: "EXPRESSION",
+                        optional: false,
+                        editable: true,
+                        documentation: `Value used for '${param.name}' in the action call (required).`,
+                        value: values[`${param.name}${DEFAULT_VALUE_SUFFIX}`] ?? "",
+                        types: [{ fieldType: "EXPRESSION", ballerinaType: param.type, selected: true }],
+                        enabled: true,
+                    });
+                }
+            } else {
+                // Optional parameters live under the collapsed advanced section, unchecked by
+                // default. Unchecked, the argument is omitted (the action default applies); the
+                // generated activity can be edited manually for custom fixed values.
+                wizardFields.push({
+                    key: param.name,
+                    label: param.name,
+                    type: "FLAG",
+                    optional: true,
+                    editable: true,
+                    advanced: true,
+                    documentation: `${param.type} — check to expose as an activity parameter; unchecked, the action's default is used.`,
+                    value: isChecked,
+                    types: [{ fieldType: "FLAG", selected: true }],
                     enabled: true,
                 });
             }
@@ -379,11 +412,12 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 .replace(/```[\s\S]*?```/g, "")
                 .trim();
 
-            // Everything is exposed as an activity parameter by default; unchecking switches a
-            // parameter to a fixed value provided in the form.
+            // Required parameters are exposed as activity parameters by default (unchecking switches
+            // them to a fixed value provided in the form); optional parameters start unchecked under
+            // the advanced section (the action default applies).
             const checked: Record<string, boolean> = {};
             for (const param of analysis.params || []) {
-                checked[param.name] = true;
+                checked[param.name] = param.required;
             }
             checkedParamsRef.current = checked;
             formValuesRef.current = { description: templateDescription };
@@ -404,11 +438,15 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
         if (!analysis) {
             return;
         }
-        // A parameter checkbox toggled: rebuild the field list so the inline value field for that
-        // parameter appears/disappears, carrying the latest values over.
-        if ((analysis.params || []).some((param) => param.name === fieldKey)) {
-            const checked = { ...checkedParamsRef.current, [fieldKey]: value === true };
-            checkedParamsRef.current = checked;
+        const param = (analysis.params || []).find((p) => p.name === fieldKey);
+        if (!param) {
+            return;
+        }
+        const checked = { ...checkedParamsRef.current, [fieldKey]: value === true };
+        checkedParamsRef.current = checked;
+        // A required parameter's checkbox toggles its inline value field: rebuild the field list,
+        // carrying the latest values over. Optional checkboxes don't change the field structure.
+        if (param.required) {
             setFields(buildWizardFields(analysis, checked, formValuesRef.current));
         }
     };
@@ -427,8 +465,8 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
         }
 
         // Checked parameters become the activity's parameters, passed straight through to the action
-        // call; unchecked ones get their form-provided value baked into the call (empty optional
-        // values omit the argument so the action default applies).
+        // call. An unchecked required parameter gets its form-provided value baked into the call;
+        // unchecked optional parameters are omitted so the action default applies.
         const checked = checkedParamsRef.current;
         const activityParameters: ToolParameters = createToolParameters();
         activityParameters.metadata = { label: "Parameters", description: "Activity function parameters" };
@@ -443,7 +481,11 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
             if (!property) {
                 continue;
             }
-            const value = isChecked ? param.name : String(data[`${param.name}${DEFAULT_VALUE_SUFFIX}`] ?? "");
+            const value = isChecked
+                ? param.name
+                : param.required
+                  ? String(data[`${param.name}${DEFAULT_VALUE_SUFFIX}`] ?? "")
+                  : "";
             newProperties[param.name] = { ...property, value };
         }
 
@@ -477,6 +519,7 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 connection: selectedNodeRef.current?.codedata?.parentSymbol || "",
                 activityParameters,
                 streamElementType: analysis.dependentReturn ? undefined : analysis.streamElementType,
+                connectionAsParam: data[CONNECTION_AS_PARAM_KEY] === true,
             });
             if (response?.errorMsg) {
                 console.error(">>> Error creating activity from connection", response);

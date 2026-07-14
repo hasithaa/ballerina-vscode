@@ -1027,6 +1027,8 @@ export interface GenActivityRequest {
     emptyActionArgs?: boolean;
     /** When the action returns a stream, its element type T: the activity collects it and returns T[]. */
     streamElementType?: string;
+    /** When true, the connection is exposed as the activity's first parameter (built-in activity style). */
+    connectionAsParam?: boolean;
 }
 
 export interface GenActivityResponse {
