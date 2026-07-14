@@ -147,9 +147,9 @@ public class WorkflowManagerService implements ExtendedLanguageServerService {
                 ActivityGenerator activityGenerator = new ActivityGenerator(semanticModel.get());
                 response.setTextEdits(activityGenerator.genActivity(request.flowNode(), request.activityName(),
                         request.activityParameters(), request.connection(), request.description(),
-                        request.emptyActionArgs(), request.streamElementType(), request.connectionAsParam(),
+                        request.streamElementType(), request.connectionAsParam(),
                         filePath, this.workspaceManager));
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 response.setError(e);
             }
             return response;
@@ -197,7 +197,7 @@ public class WorkflowManagerService implements ExtendedLanguageServerService {
                 ActionSignatureAnalyzer.Analysis analysis =
                         ActionSignatureAnalyzer.analyze(actionMethod, semanticModel);
                 response.setAnalysis(new Gson().toJsonTree(analysis));
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 response.setError(e);
             }
             return response;

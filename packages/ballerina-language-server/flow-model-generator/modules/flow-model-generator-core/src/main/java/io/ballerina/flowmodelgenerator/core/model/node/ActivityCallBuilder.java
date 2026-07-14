@@ -334,7 +334,7 @@ public class ActivityCallBuilder extends CallBuilder {
     public static ConnectionSelectorData resolveUserActivityConnectionSelector(ClassSymbol connectionClass) {
         Optional<ModuleSymbol> connectionModule = connectionClass.getModule();
         if (connectionModule.isEmpty()) {
-            return new ConnectionSelectorData(null, null);
+            return new ConnectionSelectorData(null, List.of());
         }
         ModuleInfo connectorModuleInfo = ModuleInfo.from(connectionModule.get().id());
         // searchNodes treats non-NodeKind kind strings as a module-prefix filter (e.g. "HTTP" matches
