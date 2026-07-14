@@ -29,8 +29,6 @@ import com.google.gson.JsonElement;
  * @param activityParameters activity function parameters property node
  * @param description        description of the activity
  * @param connection         name of the connection the action was selected from
- * @param emptyActionArgs    when {@code true}, the wrapped action call is generated with no arguments
- *                           (used when the action has non-data types the user must fill in manually)
  * @param streamElementType  when the action returns a stream, its element type {@code T}: the
  *                           generated activity collects the stream and returns {@code T[]}; else null
  * @param connectionAsParam  when {@code true}, the connection is exposed as the activity's first
@@ -40,5 +38,5 @@ import com.google.gson.JsonElement;
  */
 public record GenActivityRequest(String filePath, JsonElement flowNode, String activityName,
                                  JsonElement activityParameters, String description, String connection,
-                                 boolean emptyActionArgs, String streamElementType, boolean connectionAsParam) {
+                                 String streamElementType, boolean connectionAsParam) {
 }

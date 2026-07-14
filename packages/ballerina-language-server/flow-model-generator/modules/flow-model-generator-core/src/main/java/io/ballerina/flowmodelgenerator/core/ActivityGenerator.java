@@ -96,9 +96,6 @@ public class ActivityGenerator {
      * @param connectionName     name of the module-level connection variable the action was selected from;
      *                           referenced by name in the generated activity body
      * @param description        description of the activity (emitted as the doc comment)
-     * @param emptyActionArgs    when {@code true}, the wrapped action call is generated with no
-     *                           arguments (used when the action has non-data types the user must
-     *                           fill in manually)
      * @param streamElementType  when the action returns a stream, its element type {@code T}: the
      *                           body collects the stream and returns {@code T[]}; else null
      * @param connectionAsParam  when {@code true}, the connection is exposed as the activity's first
@@ -109,7 +106,7 @@ public class ActivityGenerator {
      * @return the text edits to apply
      */
     public JsonElement genActivity(JsonElement node, String activityName, JsonElement activityParameters,
-                                   String connectionName, String description, boolean emptyActionArgs,
+                                   String connectionName, String description,
                                    String streamElementType, boolean connectionAsParam,
                                    Path filePath, WorkspaceManager workspaceManager) {
         FlowNode flowNode = gson.fromJson(node, FlowNode.class);
@@ -139,12 +136,6 @@ public class ActivityGenerator {
         // The connection is a module-level global referenced by name in the body (not a parameter);
         // validate it exists so a stale/deleted connection surfaces a clear error.
         validateConnectionExists(connectionName);
-
-        // When the action has non-data types, generate the call with no arguments (a stub the user
-        // completes): ignore every action property so no arguments are emitted for the call.
-        if (emptyActionArgs && flowNode.properties() != null) {
-            ignoredKeys.addAll(flowNode.properties().keySet());
-        }
 
         // Documentation: description, connection parameter (when exposed), activity inputs, return value
         boolean hasDescription = genDescription(description, sourceBuilder);

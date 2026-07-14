@@ -1023,8 +1023,6 @@ export interface GenActivityRequest {
     description: string;
     connection: string;
     activityParameters?: ToolParameters;
-    /** When true, the wrapped action call is generated with no arguments (action has non-data types). */
-    emptyActionArgs?: boolean;
     /** When the action returns a stream, its element type T: the activity collects it and returns T[]. */
     streamElementType?: string;
     /** When true, the connection is exposed as the activity's first parameter (built-in activity style). */

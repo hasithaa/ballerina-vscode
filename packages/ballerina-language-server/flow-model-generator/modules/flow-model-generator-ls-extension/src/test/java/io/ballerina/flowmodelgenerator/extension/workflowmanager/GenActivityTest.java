@@ -69,7 +69,7 @@ public class GenActivityTest extends AbstractLSTest {
         String filePath = sourceDir.resolve(testConfig.source()).toAbsolutePath().toString();
         GenActivityRequest request = new GenActivityRequest(filePath, testConfig.diagram(),
                 testConfig.activityName(), testConfig.activityParameters(), testConfig.activityDescription(),
-                testConfig.connection(), false, null, false);
+                testConfig.connection(), null, false);
         JsonObject jsonMap = getResponseAndCloseFile(request, testConfig.source()).getAsJsonObject("textEdits");
 
         Map<String, List<TextEdit>> actualTextEdits = gson.fromJson(jsonMap, textEditListType);
@@ -115,27 +115,12 @@ public class GenActivityTest extends AbstractLSTest {
     }
 
     @Test
-    public void testEmptyActionArgs() throws IOException {
-        Path configJsonPath = configDir.resolve("gen_activity_remote_action.json");
-        TestConfig base = gson.fromJson(Files.newBufferedReader(configJsonPath), TestConfig.class);
-        String filePath = sourceDir.resolve(base.source()).toAbsolutePath().toString();
-        GenActivityRequest request = new GenActivityRequest(filePath, base.diagram(), base.activityName(),
-                base.activityParameters(), base.activityDescription(), base.connection(), true, null, false);
-
-        JsonObject jsonMap = getResponseAndCloseFile(request, base.source()).getAsJsonObject("textEdits");
-        String generated = jsonMap.toString();
-        // The action call is emitted with no arguments (a stub the user completes).
-        Assert.assertTrue(generated.contains("currencyClient->get()"),
-                "Expected an empty-argument action call, got: " + generated);
-    }
-
-    @Test
     public void testStreamCollectedReturn() throws IOException {
         Path configJsonPath = configDir.resolve("gen_activity_remote_action.json");
         TestConfig base = gson.fromJson(Files.newBufferedReader(configJsonPath), TestConfig.class);
         String filePath = sourceDir.resolve(base.source()).toAbsolutePath().toString();
         GenActivityRequest request = new GenActivityRequest(filePath, base.diagram(), base.activityName(),
-                base.activityParameters(), base.activityDescription(), base.connection(), false, "string", false);
+                base.activityParameters(), base.activityDescription(), base.connection(), "string", false);
 
         JsonObject jsonMap = getResponseAndCloseFile(request, base.source()).getAsJsonObject("textEdits");
         String generated = jsonMap.toString();
@@ -155,7 +140,7 @@ public class GenActivityTest extends AbstractLSTest {
         TestConfig base = gson.fromJson(Files.newBufferedReader(configJsonPath), TestConfig.class);
         String filePath = sourceDir.resolve(base.source()).toAbsolutePath().toString();
         GenActivityRequest request = new GenActivityRequest(filePath, base.diagram(), base.activityName(),
-                base.activityParameters(), base.activityDescription(), base.connection(), false,
+                base.activityParameters(), base.activityDescription(), base.connection(),
                 "byte[] & readonly", false);
 
         JsonObject jsonMap = getResponseAndCloseFile(request, base.source()).getAsJsonObject("textEdits");
@@ -171,7 +156,7 @@ public class GenActivityTest extends AbstractLSTest {
         TestConfig base = gson.fromJson(Files.newBufferedReader(configJsonPath), TestConfig.class);
         String filePath = sourceDir.resolve(base.source()).toAbsolutePath().toString();
         GenActivityRequest request = new GenActivityRequest(filePath, base.diagram(), base.activityName(),
-                base.activityParameters(), base.activityDescription(), base.connection(), false, null, true);
+                base.activityParameters(), base.activityDescription(), base.connection(), null, true);
 
         JsonObject jsonMap = getResponseAndCloseFile(request, base.source()).getAsJsonObject("textEdits");
         String generated = jsonMap.toString();
@@ -195,7 +180,7 @@ public class GenActivityTest extends AbstractLSTest {
 
         String filePath = sourceDir.resolve(base.source()).toAbsolutePath().toString();
         GenActivityRequest request = new GenActivityRequest(filePath, diagram, base.activityName(),
-                base.activityParameters(), base.activityDescription(), base.connection(), false, null, false);
+                base.activityParameters(), base.activityDescription(), base.connection(), null, false);
         JsonObject jsonMap = getResponseAndCloseFile(request, base.source()).getAsJsonObject("textEdits");
         String generated = jsonMap.toString();
         Assert.assertFalse(generated.contains("import ballerina/mime"),
@@ -212,7 +197,7 @@ public class GenActivityTest extends AbstractLSTest {
         String filePath = sourceDir.resolve(base.source()).toAbsolutePath().toString();
         GenActivityRequest request = new GenActivityRequest(filePath, diagram, base.activityName(),
                 base.activityParameters(), base.activityDescription(),
-                connectionOverride != null ? connectionOverride : base.connection(), false, null, false);
+                connectionOverride != null ? connectionOverride : base.connection(), null, false);
 
         // The shared getResponse helper fails the test when the response carries an errorMsg, so the
         // endpoint is invoked directly here to assert the graceful-error contract on the raw response.
