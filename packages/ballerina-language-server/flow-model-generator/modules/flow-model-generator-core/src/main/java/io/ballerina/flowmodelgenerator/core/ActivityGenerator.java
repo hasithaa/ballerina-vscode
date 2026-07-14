@@ -24,8 +24,11 @@ import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.compiler.api.symbols.SymbolKind;
 import io.ballerina.compiler.api.symbols.VariableSymbol;
+import io.ballerina.compiler.syntax.tree.ModulePartNode;
 import io.ballerina.compiler.syntax.tree.SyntaxKind;
+import io.ballerina.compiler.syntax.tree.TypeDefinitionNode;
 import io.ballerina.flowmodelgenerator.core.model.FlowNode;
+import io.ballerina.flowmodelgenerator.core.model.FormBuilder;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
 import io.ballerina.flowmodelgenerator.core.model.Property;
 import io.ballerina.flowmodelgenerator.core.model.PropertyCodedata;
@@ -37,6 +40,7 @@ import io.ballerina.flowmodelgenerator.core.utils.ParamUtils;
 import io.ballerina.modelgenerator.commons.CommonUtils;
 import io.ballerina.modelgenerator.commons.ParameterData;
 import io.ballerina.projects.Document;
+import org.ballerinalang.langserver.common.utils.NameUtil;
 import org.ballerinalang.langserver.commons.workspace.WorkspaceManager;
 import org.eclipse.lsp4j.Range;
 
@@ -45,9 +49,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Generates {@code @workflow:Activity} functions that wrap a connection action call. The connection is
@@ -69,6 +75,8 @@ public class ActivityGenerator {
     // Fallback databinding type when the action's return type is ambiguous (see normalizeReturnType).
     private static final String DEFAULT_RETURN_TYPE = "json";
     private static final String ERROR_UNION_SUFFIX = "|error";
+    // Name of the typedesc parameter used for return-type inference on connector actions.
+    private static final String TARGET_TYPE = "targetType";
 
     private final Gson gson;
     private final SemanticModel semanticModel;
@@ -121,7 +129,7 @@ public class ActivityGenerator {
         Map<String, String> detachedPropertyImports = detachPropertyImports(flowNode);
 
         Set<String> ignoredKeys = new HashSet<>(List.of(Property.VARIABLE_KEY, Property.TYPE_KEY,
-                AgentsGenerator.TARGET_TYPE, Property.CONNECTION_KEY, Property.CHECK_ERROR_KEY));
+                TARGET_TYPE, Property.CONNECTION_KEY, Property.CHECK_ERROR_KEY));
         Set<String> pathParams = Set.of();
         if (nodeKind == NodeKind.RESOURCE_ACTION_CALL) {
             ignoredKeys.add(Property.RESOURCE_PATH_KEY);
@@ -139,7 +147,7 @@ public class ActivityGenerator {
         }
 
         // Documentation: description, connection parameter (when exposed), activity inputs, return value
-        boolean hasDescription = AgentsGenerator.genDescription(description, sourceBuilder);
+        boolean hasDescription = genDescription(description, sourceBuilder);
         List<String> paramList = new ArrayList<>();
         if (connectionAsParam) {
             if (hasDescription) {
@@ -147,14 +155,14 @@ public class ActivityGenerator {
             }
             paramList.add(resolveConnectionType(connectionName) + " " + CONNECTION_PARAM_NAME);
         }
-        paramList.addAll(AgentsGenerator.populateToolParams(activityParams, hasDescription, sourceBuilder));
+        paramList.addAll(populateActivityParams(activityParams, hasDescription, sourceBuilder));
 
         Optional<Property> optReturnType = sourceBuilder.getProperty(Property.TYPE_KEY);
         String returnType = "";
         if (optReturnType.isPresent()) {
             Property returnProperty = optReturnType.get();
             returnType = normalizeReturnType(
-                    AgentsGenerator.resolveReturnType(flowNode, returnProperty, sourceBuilder));
+                    resolveReturnType(flowNode, returnProperty, sourceBuilder));
             if (hasDescription) {
                 sourceBuilder.token().returnDoc(returnProperty.metadata().description());
             }
@@ -257,7 +265,7 @@ public class ActivityGenerator {
         Document targetDoc = FileSystemUtils.getDocument(workspaceManager, sourceBuilder.filePath);
         Range endOfFile = CommonUtils.toRange(targetDoc.syntaxTree().rootNode().lineRange().endLine());
         sourceBuilder.textEdit(SourceBuilder.SourceKind.DECLARATION, sourceBuilder.filePath, endOfFile);
-        if (AgentsGenerator.needsModuleImport(flowNode, returnType, paramList)) {
+        if (needsModuleImport(flowNode, returnType, paramList)) {
             sourceBuilder.acceptImport();
         }
         // Re-attach only the detached property imports whose prefix the generated signature uses
@@ -293,6 +301,167 @@ public class ActivityGenerator {
             }
         }
         return detached;
+    }
+
+    /**
+     * Emits the description doc line when a description is present.
+     */
+    private static boolean genDescription(String description, SourceBuilder sourceBuilder) {
+        boolean hasDescription = !description.isEmpty();
+        if (hasDescription) {
+            sourceBuilder.token().descriptionDoc(description);
+        }
+        return hasDescription;
+    }
+
+    /**
+     * Builds the {@code "<type> <name>"} signature entries (and parameter docs) from the activity
+     * parameters property node (REPEATABLE_PROPERTY).
+     */
+    private List<String> populateActivityParams(Property activityParams, boolean hasDescription,
+                                                SourceBuilder sourceBuilder) {
+        List<String> paramList = new ArrayList<>();
+        if (activityParams == null || activityParams.value() == null) {
+            return paramList;
+        }
+        if (activityParams.value() instanceof Map<?, ?> paramMap) {
+            for (Object obj : paramMap.values()) {
+                Property paramProperty = gson.fromJson(gson.toJsonTree(obj), Property.class);
+                if (!(paramProperty.value() instanceof Map<?, ?> paramData)) {
+                    continue;
+                }
+                Map<String, Property> paramProperties = gson.fromJson(gson.toJsonTree(paramData),
+                        FormBuilder.NODE_PROPERTIES_TYPE);
+
+                String paramType = paramProperties.get(Property.TYPE_KEY).value().toString();
+                String paramName = paramProperties.get(Property.VARIABLE_KEY).value().toString();
+                Property property = paramProperties.get(Property.PARAMETER_DESCRIPTION_KEY);
+                paramList.add(paramType + " " + paramName);
+                if (hasDescription && property != null) {
+                    sourceBuilder.token().parameterDoc(paramName, property.value().toString());
+                }
+            }
+        }
+        return paramList;
+    }
+
+    /**
+     * Whether the connector module of the wrapped action must be imported: true when its module prefix
+     * appears in the generated return type or parameter list.
+     */
+    private static boolean needsModuleImport(FlowNode flowNode, String returnType, List<String> paramList) {
+        String modulePrefix = flowNode.codedata().getModulePrefix() + ":";
+        if (returnType.contains(modulePrefix)) {
+            return true;
+        }
+        for (String param : paramList) {
+            if (param.contains(modulePrefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Replaces any type-infer parameter name embedded in the return type with its resolved concrete
+     * type (user value, default value, or {@code json}).
+     */
+    private static String resolveTypeInferParams(String returnType, FlowNode flowNode) {
+        if (flowNode.properties() == null) {
+            return returnType;
+        }
+        for (Map.Entry<String, Property> entry : flowNode.properties().entrySet()) {
+            PropertyCodedata propCodedata = entry.getValue()
+                    .codedata();
+            if (propCodedata != null
+                    && ParameterData.Kind.PARAM_FOR_TYPE_INFER.name().equals(propCodedata.kind())) {
+                String paramName = entry.getKey();
+                // Use user-provided value if set, otherwise fall back to defaultValue
+                String resolvedType = null;
+                Object value = entry.getValue().value();
+                if (value != null && !value.toString().isEmpty()) {
+                    resolvedType = value.toString();
+                } else {
+                    resolvedType = entry.getValue().defaultValue();
+                }
+                if (resolvedType == null || resolvedType.isEmpty()) {
+                    resolvedType = "json";
+                }
+                returnType = returnType.replace(paramName, resolvedType);
+            }
+        }
+        return returnType;
+    }
+
+    private static boolean hasRecordFieldSelector(FlowNode flowNode) {
+        if (flowNode.properties() == null) {
+            return false;
+        }
+        return flowNode.properties().values().stream()
+                .anyMatch(p -> p.codedata() != null
+                        && ParameterData.Kind.PARAM_FOR_TYPE_INFER.name().equals(p.codedata().kind())
+                        && p.types() != null && !p.types().isEmpty()
+                        && p.types().getFirst().recordSelectorType() != null);
+    }
+
+    /**
+     * Resolves the activity return type from the action node: a generated named type for
+     * record-field-selector inference, the {@code targetType} value/default for dependently-typed
+     * actions, or the declared result type otherwise.
+     */
+    private static String resolveReturnType(FlowNode flowNode, Property returnProperty, SourceBuilder sourceBuilder) {
+        if (flowNode.codedata().inferredReturnType() != null && hasRecordFieldSelector(flowNode)) {
+            Optional<Property> variable = flowNode.getProperty(Property.VARIABLE_KEY);
+            if (variable.isPresent()) {
+                // Ensure the variable name produces a unique type name by checking types.bal
+                Property varProp = variable.get();
+                Path typesFilePath = sourceBuilder.filePath.resolveSibling("types.bal");
+                Document typesDoc = FileSystemUtils.getDocument(
+                        sourceBuilder.workspaceManager, typesFilePath);
+                if (typesDoc != null) {
+                    ModulePartNode typesRoot = typesDoc.syntaxTree().rootNode();
+                    Set<String> existingTypeNames = typesRoot.members().stream()
+                            .filter(m -> m.kind() == SyntaxKind.TYPE_DEFINITION)
+                            .map(m -> ((TypeDefinitionNode) m).typeName().text())
+                            .collect(Collectors.toSet());
+                    String varName = varProp.toSourceCode();
+                    String candidateTypeName = varName.substring(0, 1).toUpperCase(Locale.ROOT)
+                            + varName.substring(1) + "Type";
+                    if (existingTypeNames.contains(candidateTypeName)) {
+                        // Strip trailing digits to get the base prefix (e.g. "var1" -> "var"),
+                        // matching how the LS generates unique variable names (var, var1, var2...)
+                        String baseVarName = varName.replaceAll("\\d+$", "");
+                        // Convert type names to their variable form for collision checking
+                        Set<String> usedVarNames = new HashSet<>();
+                        // Include the base name so numbering starts from 1 (var1, var2...)
+                        usedVarNames.add(baseVarName);
+                        for (String typeName : existingTypeNames) {
+                            if (typeName.endsWith("Type") && typeName.length() > 4) {
+                                String prefix = typeName.substring(0, typeName.length() - 4);
+                                usedVarNames.add(prefix.substring(0, 1).toLowerCase(Locale.ROOT)
+                                        + prefix.substring(1));
+                            }
+                        }
+                        String uniqueVarName = NameUtil.generateTypeName(baseVarName, usedVarNames);
+                        varProp = new Property.Builder<>(null).value(uniqueVarName).build();
+                    }
+                }
+                return sourceBuilder.getTypeNameForInferredParam(varProp,
+                        returnProperty.value().toString());
+            }
+        }
+        Optional<Property> optTargetType = flowNode.getProperty(TARGET_TYPE);
+        String returnType;
+        if (optTargetType.isPresent() && optTargetType.get().value() != null
+                && !optTargetType.get().value().toString().isEmpty()) {
+            returnType = optTargetType.get().value().toString();
+        } else if (optTargetType.isPresent()) {
+            String defaultType = optTargetType.get().defaultValue();
+            returnType = (defaultType != null && !defaultType.isEmpty()) ? defaultType : "json";
+        } else {
+            returnType = returnProperty.value().toString();
+        }
+        return resolveTypeInferParams(returnType, flowNode);
     }
 
     /**
