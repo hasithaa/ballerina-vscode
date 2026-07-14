@@ -76,12 +76,16 @@ public final class ActionSignatureAnalyzer {
      * @param supported         whether an activity can be generated automatically
      * @param reasons           when unsupported, the human-readable reasons
      * @param params            the derived activity parameters (empty when unsupported)
-     * @param returnType        the derived activity return type (success type, without {@code |error})
+     * @param returnType        the derived activity return type (success type, without {@code |error});
+     *                          empty when {@code dependentReturn} is set (the user provides it)
      * @param streamElementType when the action returns a stream, its element type (the activity
      *                          returns {@code streamElementType[]} collected from the stream); else null
+     * @param dependentReturn   whether the action's return type depends on a typedesc parameter — the
+     *                          user provides the expected type {@code T} and the activity returns
+     *                          {@code T|error}
      */
     public record Analysis(boolean supported, List<String> reasons, List<DerivedParam> params,
-                           String returnType, String streamElementType) {
+                           String returnType, String streamElementType, boolean dependentReturn) {
     }
 
     /**
@@ -114,18 +118,20 @@ public final class ActionSignatureAnalyzer {
         List<DerivedParam> params = new ArrayList<>(pathParams);
         params.addAll(analysis.params());
         return new Analysis(reasons.isEmpty(), reasons, params, analysis.returnType(),
-                analysis.streamElementType());
+                analysis.streamElementType(), analysis.dependentReturn());
     }
 
     public static Analysis analyze(FunctionTypeSymbol functionTypeSymbol, SemanticModel semanticModel) {
         TypeSymbol anydata = semanticModel.types().ANYDATA;
         List<String> reasons = new ArrayList<>();
         List<DerivedParam> params = new ArrayList<>();
+        boolean dependentReturn = false;
 
         for (ParameterSymbol param : functionTypeSymbol.params().orElse(List.of())) {
-            // Skip the typedesc parameter used for return-type inference; the return type is derived
-            // separately below.
+            // A typedesc parameter means the return type is inferred from it: the user provides the
+            // expected type instead of it being derived from the signature.
             if (CommonUtils.getRawType(param.typeDescriptor()).typeKind() == TypeDescKind.TYPEDESC) {
+                dependentReturn = true;
                 continue;
             }
             String name = param.getName().orElse("");
@@ -133,21 +139,22 @@ public final class ActionSignatureAnalyzer {
             if (kind == ParameterKind.REST) {
                 reasons.add("Rest parameter '" + name + "' is not supported");
             } else if (kind == ParameterKind.INCLUDED_RECORD) {
-                expandIncludedRecord(param.typeDescriptor(), params, reasons, anydata);
+                expandIncludedRecord(param.typeDescriptor(), params, reasons, anydata, semanticModel);
             } else {
                 // REQUIRED or DEFAULTABLE
                 boolean required = kind == ParameterKind.REQUIRED;
-                addParam(params, reasons, name, param.typeDescriptor(), required, anydata);
+                addParam(params, reasons, name, param.typeDescriptor(), required, anydata, semanticModel);
             }
         }
 
         String returnType = "";
         String streamElementType = null;
         Optional<TypeSymbol> optReturnType = functionTypeSymbol.returnTypeDescriptor();
-        if (optReturnType.isPresent()) {
-            ReturnDerivation derived = deriveReturnType(optReturnType.get(), anydata);
+        if (!dependentReturn && optReturnType.isPresent()) {
+            ReturnDerivation derived = deriveReturnType(optReturnType.get(), anydata, semanticModel);
             if (derived == null) {
-                reasons.add("Return type '" + optReturnType.get().signature()
+                reasons.add("Return type '"
+                        + CommonUtils.getTypeSignature(semanticModel, optReturnType.get(), true)
                         + "' is not a data type (it must be, or contain, anydata)");
             } else {
                 returnType = derived.type;
@@ -156,14 +163,16 @@ public final class ActionSignatureAnalyzer {
         }
 
         boolean supported = reasons.isEmpty();
-        return new Analysis(supported, reasons, params, returnType, streamElementType);
+        return new Analysis(supported, reasons, params, returnType, streamElementType, dependentReturn);
     }
 
     private static void addParam(List<DerivedParam> params, List<String> reasons, String name,
-                                 TypeSymbol type, boolean required, TypeSymbol anydata) {
-        String derived = deriveDataType(type, anydata);
+                                 TypeSymbol type, boolean required, TypeSymbol anydata,
+                                 SemanticModel semanticModel) {
+        String derived = deriveDataType(type, anydata, semanticModel);
         if (derived == null) {
-            reasons.add("Parameter '" + name + "' of type '" + type.signature()
+            reasons.add("Parameter '" + name + "' of type '"
+                    + CommonUtils.getTypeSignature(semanticModel, type, true)
                     + "' is not a data type (it must be, or contain, anydata)");
             return;
         }
@@ -171,28 +180,29 @@ public final class ActionSignatureAnalyzer {
     }
 
     private static void expandIncludedRecord(TypeSymbol type, List<DerivedParam> params, List<String> reasons,
-                                             TypeSymbol anydata) {
+                                             TypeSymbol anydata, SemanticModel semanticModel) {
         TypeSymbol rawType = CommonUtils.getRawType(type);
         if (rawType.typeKind() != TypeDescKind.RECORD) {
-            reasons.add("Included record parameter of type '" + type.signature() + "' is not supported");
+            reasons.add("Included record parameter of type '"
+                    + CommonUtils.getTypeSignature(semanticModel, type, true) + "' is not supported");
             return;
         }
         Map<String, RecordFieldSymbol> fields = ((RecordTypeSymbol) rawType).fieldDescriptors();
         for (Map.Entry<String, RecordFieldSymbol> entry : fields.entrySet()) {
             RecordFieldSymbol field = entry.getValue();
             boolean required = !field.isOptional() && !field.hasDefaultValue();
-            addParam(params, reasons, entry.getKey(), field.typeDescriptor(), required, anydata);
+            addParam(params, reasons, entry.getKey(), field.typeDescriptor(), required, anydata, semanticModel);
         }
     }
 
     /**
      * Derives the data (anydata) type for a parameter: the type itself if it is anydata, or the union
      * of its anydata members (dropping non-anydata members). Returns {@code null} if the type has no
-     * anydata part.
+     * anydata part. Signatures are rendered without org/version qualifiers (e.g. {@code http:Request}).
      */
-    private static String deriveDataType(TypeSymbol type, TypeSymbol anydata) {
+    private static String deriveDataType(TypeSymbol type, TypeSymbol anydata, SemanticModel semanticModel) {
         if (CommonUtils.subTypeOf(type, anydata)) {
-            return type.signature();
+            return CommonUtils.getTypeSignature(semanticModel, type, true);
         }
         TypeSymbol rawType = CommonUtils.getRawType(type);
         if (rawType.typeKind() != TypeDescKind.UNION) {
@@ -205,7 +215,7 @@ public final class ActionSignatureAnalyzer {
                 continue;
             }
             if (CommonUtils.subTypeOf(member, anydata)) {
-                anydataMembers.add(member.signature());
+                anydataMembers.add(CommonUtils.getTypeSignature(semanticModel, member, true));
             }
         }
         return anydataMembers.isEmpty() ? null : String.join("|", anydataMembers);
@@ -219,7 +229,8 @@ public final class ActionSignatureAnalyzer {
      * {@code stream<T,…>} into {@code T[]}, or takes the first anydata member of a union. Returns
      * {@code null} if there is no usable data return type.
      */
-    private static ReturnDerivation deriveReturnType(TypeSymbol returnType, TypeSymbol anydata) {
+    private static ReturnDerivation deriveReturnType(TypeSymbol returnType, TypeSymbol anydata,
+                                                     SemanticModel semanticModel) {
         TypeSymbol rawType = CommonUtils.getRawType(returnType);
 
         // Collect the non-error/non-nil members.
@@ -245,7 +256,8 @@ public final class ActionSignatureAnalyzer {
             if (rawMember.typeKind() == TypeDescKind.STREAM) {
                 TypeSymbol elementType = ((StreamTypeSymbol) rawMember).typeParameter();
                 if (CommonUtils.subTypeOf(elementType, anydata)) {
-                    return new ReturnDerivation(elementType.signature() + "[]", elementType.signature());
+                    String elementSignature = CommonUtils.getTypeSignature(semanticModel, elementType, true);
+                    return new ReturnDerivation(elementSignature + "[]", elementSignature);
                 }
             }
         }
@@ -253,7 +265,7 @@ public final class ActionSignatureAnalyzer {
         // Otherwise take the first anydata member.
         for (TypeSymbol member : members) {
             if (CommonUtils.subTypeOf(member, anydata)) {
-                return new ReturnDerivation(member.signature(), null);
+                return new ReturnDerivation(CommonUtils.getTypeSignature(semanticModel, member, true), null);
             }
         }
         return null;

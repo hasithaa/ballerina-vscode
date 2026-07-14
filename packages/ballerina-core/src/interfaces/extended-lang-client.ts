@@ -1059,6 +1059,8 @@ export interface ActivityActionAnalysis {
     returnType: string;
     /** When the action returns a stream, its element type T (the activity returns T[]); else absent. */
     streamElementType?: string;
+    /** True when the return type is inferred from a typedesc param — the user provides the type T. */
+    dependentReturn?: boolean;
 }
 
 export interface AnalyzeActivityActionResponse {
