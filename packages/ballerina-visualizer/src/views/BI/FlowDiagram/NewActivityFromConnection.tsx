@@ -504,23 +504,20 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 </LoaderContainer>
             )}
             {!loading && !saving && panelView === PanelView.CONNECTION_LIST && (
-                <>
-                    <ActivityWizardSteps activeStep={1} />
-                    <NodeList
-                        categories={categories}
-                        onSelect={handleOnSelectNode}
-                        onAddConnection={handleAddConnection}
-                        onClose={onClose}
-                        onBack={onBack}
-                        title={"Connections"}
-                        searchPlaceholder={"Search connections"}
-                        panelBodySx={{ height: "calc(100vh - 170px)" }}
-                    />
-                </>
+                <NodeList
+                    categories={categories}
+                    onSelect={handleOnSelectNode}
+                    onAddConnection={handleAddConnection}
+                    onClose={onClose}
+                    onBack={onBack}
+                    title={"Connections"}
+                    searchPlaceholder={"Search connections"}
+                    panelBodySx={{ height: "calc(100vh - 140px)" }}
+                />
             )}
             {!loading && !saving && panelView === PanelView.UNSUPPORTED && (
                 <>
-                    <ActivityWizardSteps activeStep={2} />
+                    <ActivityWizardSteps activeStep={1} />
                     <UnsupportedContainer>
                         <WarningBox>
                             <Codicon name="warning" />
@@ -552,7 +549,7 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
             )}
             {!saving && panelView === PanelView.ACTIVITY_FORM && (
                 <>
-                    <ActivityWizardSteps activeStep={2} />
+                    <ActivityWizardSteps activeStep={1} />
                     <ArtifactForm
                         preserveFieldOrder={true}
                         fileName={fileName}

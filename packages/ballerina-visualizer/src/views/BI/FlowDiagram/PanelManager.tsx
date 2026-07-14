@@ -726,7 +726,7 @@ export function PanelManager(props: PanelManagerProps) {
             case SidePanelView.FORM:
                 return (
                     <>
-                    {showActivityCallStep && <ActivityWizardSteps activeStep={3} />}
+                    {showActivityCallStep && <ActivityWizardSteps activeStep={2} />}
                     <FlowNodeForm
                         key={selectedNode?.id ?? 'no-node'}
                         fileName={fileName}

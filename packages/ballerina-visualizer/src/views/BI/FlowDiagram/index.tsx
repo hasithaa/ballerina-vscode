@@ -1398,6 +1398,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
 
     const handleOnSelectNode = (nodeId: string, metadata?: any, fileName?: string) => {
         selectedNodeMetadata.current = { nodeId, metadata, fileName: model?.fileName || fileName };
+        // A node selected through the normal palette flow is not part of the create-activity wizard.
+        setShowActivityCallStep(false);
         const { node, category } = metadata as { node: AvailableNode; category?: string };
 
         // Push current state to navigation stack before navigating
@@ -2107,6 +2109,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
 
     const handleOnEditNode = async (node: FlowNode) => {
         setSelectedNodeId(node.id);
+        // Editing an existing node is not part of the create-activity wizard.
+        setShowActivityCallStep(false);
         selectedNodeRef.current = node;
         if (suggestedText.current) {
             // use targetRef from suggested model

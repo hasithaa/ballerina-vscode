@@ -55,13 +55,14 @@ const Separator = styled.span`
     margin: 0 2px;
 `;
 
-const STEP_LABELS = ["Select Action", "Create Activity", "Call Activity"];
+const STEP_LABELS = ["Create Activity", "Call Activity"];
 
 /**
- * The three-step progress bar of the create-activity-from-connection flow:
- * select the connection action, create the activity, and wire the activity call.
+ * The two-step progress bar of the create-activity-from-connection flow, shown after an action is
+ * selected: create the activity, then wire the activity call. (The connection/action selection uses
+ * the shared connection list, so no step bar is shown there.)
  */
-export function ActivityWizardSteps({ activeStep }: { activeStep: 1 | 2 | 3 }): JSX.Element {
+export function ActivityWizardSteps({ activeStep }: { activeStep: 1 | 2 }): JSX.Element {
     return (
         <StepsContainer>
             {STEP_LABELS.map((label, index) => (
