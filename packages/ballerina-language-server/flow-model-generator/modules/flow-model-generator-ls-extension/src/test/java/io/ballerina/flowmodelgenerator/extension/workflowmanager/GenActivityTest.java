@@ -168,6 +168,30 @@ public class GenActivityTest extends AbstractLSTest {
     }
 
     @Test
+    public void testParamDocFallback() throws IOException {
+        Path configJsonPath = configDir.resolve("gen_activity_remote_action.json");
+        TestConfig base = gson.fromJson(Files.newBufferedReader(configJsonPath), TestConfig.class);
+        // Blank the parameter descriptions: every parameter must still get a doc line so the
+        // generated activity raises no undocumented-parameter (BCE20001) warnings.
+        JsonObject activityParameters = base.activityParameters().getAsJsonObject().deepCopy();
+        JsonObject paramsValue = activityParameters.getAsJsonObject("value");
+        for (String key : paramsValue.keySet()) {
+            paramsValue.getAsJsonObject(key).getAsJsonObject("value")
+                    .getAsJsonObject("parameterDescription").addProperty("value", "");
+        }
+
+        String filePath = sourceDir.resolve(base.source()).toAbsolutePath().toString();
+        GenActivityRequest request = new GenActivityRequest(filePath, base.diagram(), base.activityName(),
+                activityParameters, base.activityDescription(), base.connection(), null, false);
+        JsonObject jsonMap = getResponseAndCloseFile(request, base.source()).getAsJsonObject("textEdits");
+        String generated = jsonMap.toString();
+        Assert.assertTrue(generated.contains("+ base - The base value"),
+                "Expected a fallback doc line for 'base', got: " + generated);
+        Assert.assertTrue(generated.contains("+ symbols - The symbols value"),
+                "Expected a fallback doc line for 'symbols', got: " + generated);
+    }
+
+    @Test
     public void testUnusedPropertyImportsDropped() throws IOException {
         Path configJsonPath = configDir.resolve("gen_activity_remote_action.json");
         TestConfig base = gson.fromJson(Files.newBufferedReader(configJsonPath), TestConfig.class);
