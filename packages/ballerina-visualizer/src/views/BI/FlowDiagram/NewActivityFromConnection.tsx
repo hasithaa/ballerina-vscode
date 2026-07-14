@@ -27,6 +27,7 @@ import {
     DIRECTORY_MAP,
     EVENT_TYPE,
     FlowNode,
+    LineRange,
     MACHINE_VIEW,
     NodeProperties,
     ParentPopupData,
@@ -119,6 +120,11 @@ interface NewActivityFromConnectionProps {
     /** Path of the file the workflow diagram is rendered for. The activity is added to this file. */
     fileName: string;
     /**
+     * Position in the workflow function where the activity call will be added. Used as the expression
+     * editor's scope so the action-parameter fields suggest the workflow function's local variables.
+     */
+    targetLineRange?: LineRange;
+    /**
      * Called after the activity function is generated. `callArgs` maps each activity parameter name to
      * the expression the user entered, so the caller can insert the {@code callActivity} into the
      * workflow without a second form.
@@ -140,8 +146,15 @@ interface NewActivityFromConnectionProps {
  * {@code callActivity} arguments.
  */
 export function NewActivityFromConnection(props: NewActivityFromConnectionProps): JSX.Element {
-    const { fileName, onActivityCreated, onBack, onClose } = props;
+    const { fileName, targetLineRange, onActivityCreated, onBack, onClose } = props;
     const { rpcClient } = useRpcContext();
+
+    // Scope for the expression editors: the workflow position the activity call is added at, so the
+    // action-parameter fields suggest the workflow function's local variables. Falls back to file start.
+    const formTargetLineRange = targetLineRange ?? {
+        startLine: { line: 0, offset: 0 },
+        endLine: { line: 0, offset: 0 },
+    };
 
     const [panelView, setPanelView] = useState<PanelView>(PanelView.CONNECTION_LIST);
     const [categories, setCategories] = useState<PanelCategory[]>([]);
@@ -546,7 +559,7 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 <ArtifactForm
                     preserveFieldOrder={false}
                     fileName={fileName}
-                    targetLineRange={{ startLine: { line: 0, offset: 0 }, endLine: { line: 0, offset: 0 } }}
+                    targetLineRange={formTargetLineRange}
                     fields={fields}
                     recordTypeFields={recordTypeFields}
                     onSubmit={handleActivitySubmit}

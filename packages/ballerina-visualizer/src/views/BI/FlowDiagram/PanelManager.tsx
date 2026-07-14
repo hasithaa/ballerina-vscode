@@ -445,6 +445,7 @@ export function PanelManager(props: PanelManagerProps) {
                 return (
                     <NewActivityFromConnection
                         fileName={fileName}
+                        targetLineRange={targetLineRange}
                         onActivityCreated={onActivityFromConnectionCreated}
                         onBack={canGoBack ? onBack : undefined}
                         onClose={onClose}

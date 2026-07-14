@@ -2392,12 +2392,16 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 }
                 // genActivity rewrites and reformats the file (e.g. splitting the combined import line),
                 // which shifts the position the create flow was launched from. Re-resolve the insertion
-                // point from a fresh flow model — append after the last node in the refreshed workflow.
+                // point from a fresh flow model so the call lands inside the workflow body.
                 const refreshed = await rpcClient.getBIDiagramRpcClient().getFlowModel({});
                 const refreshedNodes = refreshed?.flowModel?.nodes ?? [];
-                const anchorLine = refreshedNodes.length > 0
-                    ? refreshedNodes[refreshedNodes.length - 1]?.codedata?.lineRange?.endLine
-                    : undefined;
+                const lastNode = refreshedNodes[refreshedNodes.length - 1];
+                // EVENT_START spans the whole body; its endLine is the closing brace (module level).
+                // For an empty workflow (only EVENT_START) insert at its startLine (just inside the body);
+                // otherwise append after the last statement's endLine.
+                const anchorLine = lastNode?.codedata?.node === "EVENT_START"
+                    ? lastNode?.codedata?.lineRange?.startLine
+                    : lastNode?.codedata?.lineRange?.endLine;
                 const insertLine = anchorLine ?? targetRef.current.startLine;
                 callNode.codedata.isNew = true;
                 callNode.codedata.lineRange = {
