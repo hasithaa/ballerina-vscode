@@ -105,7 +105,7 @@ public final class ActionSignatureAnalyzer {
                     pathReasons.add("Rest resource path parameter is not supported");
                     continue;
                 }
-                if (pathParam.typeSymbol() == null || !CommonUtils.subTypeOf(pathParam.typeSymbol(), anydata)) {
+                if (pathParam.typeSymbol() == null || !pathParam.typeSymbol().subtypeOf(anydata)) {
                     pathReasons.add("Path parameter '" + pathParam.name() + "' is not a data type");
                     continue;
                 }
@@ -201,7 +201,7 @@ public final class ActionSignatureAnalyzer {
      * anydata part. Signatures are rendered without org/version qualifiers (e.g. {@code http:Request}).
      */
     private static String deriveDataType(TypeSymbol type, TypeSymbol anydata, SemanticModel semanticModel) {
-        if (CommonUtils.subTypeOf(type, anydata)) {
+        if (type.subtypeOf(anydata)) {
             return CommonUtils.getTypeSignature(semanticModel, type, true);
         }
         TypeSymbol rawType = CommonUtils.getRawType(type);
@@ -214,7 +214,7 @@ public final class ActionSignatureAnalyzer {
             if (rawMember.typeKind() == TypeDescKind.ERROR || rawMember.typeKind() == TypeDescKind.NIL) {
                 continue;
             }
-            if (CommonUtils.subTypeOf(member, anydata)) {
+            if (member.subtypeOf(anydata)) {
                 anydataMembers.add(CommonUtils.getTypeSignature(semanticModel, member, true));
             }
         }
@@ -255,7 +255,7 @@ public final class ActionSignatureAnalyzer {
             TypeSymbol rawMember = CommonUtils.getRawType(member);
             if (rawMember.typeKind() == TypeDescKind.STREAM) {
                 TypeSymbol elementType = ((StreamTypeSymbol) rawMember).typeParameter();
-                if (CommonUtils.subTypeOf(elementType, anydata)) {
+                if (elementType.subtypeOf(anydata)) {
                     String elementSignature = CommonUtils.getTypeSignature(semanticModel, elementType, true);
                     return new ReturnDerivation(elementSignature + "[]", elementSignature);
                 }
@@ -264,7 +264,7 @@ public final class ActionSignatureAnalyzer {
 
         // Otherwise take the first anydata member.
         for (TypeSymbol member : members) {
-            if (CommonUtils.subTypeOf(member, anydata)) {
+            if (member.subtypeOf(anydata)) {
                 return new ReturnDerivation(CommonUtils.getTypeSignature(semanticModel, member, true), null);
             }
         }
