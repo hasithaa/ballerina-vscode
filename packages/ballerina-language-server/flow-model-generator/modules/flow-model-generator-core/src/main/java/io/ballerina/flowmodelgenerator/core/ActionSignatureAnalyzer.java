@@ -225,6 +225,17 @@ public final class ActionSignatureAnalyzer {
     }
 
     /**
+     * Renders the array type of the given element type, parenthesizing compound element types so the
+     * array applies to the whole type (e.g. {@code (byte[] & readonly)[]}, not
+     * {@code byte[] & readonly[]}).
+     */
+    public static String arrayOf(String elementType) {
+        String type = elementType.strip();
+        boolean compound = type.contains("|") || type.contains("&") || type.contains(" ");
+        return compound ? "(" + type + ")[]" : type + "[]";
+    }
+
+    /**
      * Derives the activity return type from the action return type: strips {@code error}, collects a
      * {@code stream<T,…>} into {@code T[]}, or takes the first anydata member of a union. Returns
      * {@code null} if there is no usable data return type.
@@ -257,7 +268,7 @@ public final class ActionSignatureAnalyzer {
                 TypeSymbol elementType = ((StreamTypeSymbol) rawMember).typeParameter();
                 if (elementType.subtypeOf(anydata)) {
                     String elementSignature = CommonUtils.getTypeSignature(semanticModel, elementType, true);
-                    return new ReturnDerivation(elementSignature + "[]", elementSignature);
+                    return new ReturnDerivation(arrayOf(elementSignature), elementSignature);
                 }
             }
         }

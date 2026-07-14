@@ -33,9 +33,12 @@ import com.google.gson.JsonElement;
  *                           (used when the action has non-data types the user must fill in manually)
  * @param streamElementType  when the action returns a stream, its element type {@code T}: the
  *                           generated activity collects the stream and returns {@code T[]}; else null
+ * @param connectionAsParam  when {@code true}, the connection is exposed as the activity's first
+ *                           parameter (built-in activity style) instead of closing over the
+ *                           module-level connection
  * @since 1.5.0
  */
 public record GenActivityRequest(String filePath, JsonElement flowNode, String activityName,
                                  JsonElement activityParameters, String description, String connection,
-                                 boolean emptyActionArgs, String streamElementType) {
+                                 boolean emptyActionArgs, String streamElementType, boolean connectionAsParam) {
 }

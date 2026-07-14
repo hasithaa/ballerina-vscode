@@ -23,6 +23,7 @@ import com.google.gson.JsonElement;
 import io.ballerina.compiler.api.SemanticModel;
 import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.compiler.api.symbols.SymbolKind;
+import io.ballerina.compiler.api.symbols.VariableSymbol;
 import io.ballerina.compiler.syntax.tree.SyntaxKind;
 import io.ballerina.flowmodelgenerator.core.model.FlowNode;
 import io.ballerina.flowmodelgenerator.core.model.NodeKind;
@@ -61,6 +62,9 @@ public class ActivityGenerator {
     private static final String RESULT_VARIABLE = "result";
     // Name of the intermediate stream variable when the action's stream return is collected.
     private static final String STREAM_VARIABLE = "streamResult";
+    // Name of the connection parameter when the connection is exposed on the activity signature.
+    private static final String CONNECTION_PARAM_NAME = "connection";
+    private static final String CONNECTION_PARAM_DOC = "Connection to invoke the action on";
     // Fallback databinding type when the action's return type is ambiguous (see normalizeReturnType).
     private static final String DEFAULT_RETURN_TYPE = "json";
     private static final String ERROR_UNION_SUFFIX = "|error";
@@ -88,13 +92,17 @@ public class ActivityGenerator {
      *                           fill in manually)
      * @param streamElementType  when the action returns a stream, its element type {@code T}: the
      *                           body collects the stream and returns {@code T[]}; else null
+     * @param connectionAsParam  when {@code true}, the connection is exposed as the activity's first
+     *                           parameter (built-in activity style) instead of closing over the
+     *                           module-level connection
      * @param filePath           path of the file to add the activity function to
      * @param workspaceManager   the workspace manager
      * @return the text edits to apply
      */
     public JsonElement genActivity(JsonElement node, String activityName, JsonElement activityParameters,
                                    String connectionName, String description, boolean emptyActionArgs,
-                                   String streamElementType, Path filePath, WorkspaceManager workspaceManager) {
+                                   String streamElementType, boolean connectionAsParam,
+                                   Path filePath, WorkspaceManager workspaceManager) {
         FlowNode flowNode = gson.fromJson(node, FlowNode.class);
         Property activityParams = gson.fromJson(activityParameters, Property.class);
         NodeKind nodeKind = flowNode.codedata().node();
@@ -123,10 +131,16 @@ public class ActivityGenerator {
             ignoredKeys.addAll(flowNode.properties().keySet());
         }
 
-        // Documentation: description, activity inputs, return value
+        // Documentation: description, connection parameter (when exposed), activity inputs, return value
         boolean hasDescription = AgentsGenerator.genDescription(description, sourceBuilder);
-        List<String> paramList = new ArrayList<>(
-                AgentsGenerator.populateToolParams(activityParams, hasDescription, sourceBuilder));
+        List<String> paramList = new ArrayList<>();
+        if (connectionAsParam) {
+            if (hasDescription) {
+                sourceBuilder.token().parameterDoc(CONNECTION_PARAM_NAME, CONNECTION_PARAM_DOC);
+            }
+            paramList.add(resolveConnectionType(connectionName) + " " + CONNECTION_PARAM_NAME);
+        }
+        paramList.addAll(AgentsGenerator.populateToolParams(activityParams, hasDescription, sourceBuilder));
 
         Optional<Property> optReturnType = sourceBuilder.getProperty(Property.TYPE_KEY);
         String returnType = "";
@@ -187,9 +201,10 @@ public class ActivityGenerator {
             sourceBuilder.token().keyword(SyntaxKind.CHECK_KEYWORD);
         }
 
+        String callTarget = connectionAsParam ? CONNECTION_PARAM_NAME : connectionName;
         if (nodeKind == NodeKind.REMOTE_ACTION_CALL) {
             sourceBuilder.token()
-                    .name(connectionName)
+                    .name(callTarget)
                     .keyword(SyntaxKind.RIGHT_ARROW_TOKEN)
                     .name(flowNode.metadata().label())
                     .stepOut()
@@ -198,7 +213,7 @@ public class ActivityGenerator {
             String resourcePath = resolveResourcePath(flowNode, pathParams);
             ignoredKeys.addAll(pathParams);
             sourceBuilder.token()
-                    .name(connectionName)
+                    .name(callTarget)
                     .keyword(SyntaxKind.RIGHT_ARROW_TOKEN)
                     .resourcePath(resourcePath)
                     .keyword(SyntaxKind.DOT_TOKEN)
@@ -209,8 +224,9 @@ public class ActivityGenerator {
 
         if (collectStream) {
             // <T>[] result = check from var item in streamResult select item; return result;
+            // (compound element types are parenthesized: (byte[] & readonly)[])
             sourceBuilder.token()
-                    .name(streamElementType + "[]")
+                    .name(ActionSignatureAnalyzer.arrayOf(streamElementType))
                     .whiteSpace()
                     .name(RESULT_VARIABLE)
                     .whiteSpace()
@@ -272,6 +288,23 @@ public class ActivityGenerator {
             }
             if (symbol.getName().orElse("").equals(connectionName)) {
                 return;
+            }
+        }
+        throw new IllegalStateException("Connection '" + connectionName + "' is not found in the module");
+    }
+
+    /**
+     * Resolves the type of the module-level connection variable (e.g. {@code http:Client}) to use as
+     * the type of the exposed connection parameter.
+     */
+    private String resolveConnectionType(String connectionName) {
+        for (Symbol symbol : semanticModel.moduleSymbols()) {
+            if (symbol.kind() != SymbolKind.VARIABLE) {
+                continue;
+            }
+            if (symbol.getName().orElse("").equals(connectionName)) {
+                return CommonUtils.getTypeSignature(semanticModel,
+                        ((VariableSymbol) symbol).typeDescriptor(), true);
             }
         }
         throw new IllegalStateException("Connection '" + connectionName + "' is not found in the module");

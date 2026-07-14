@@ -147,7 +147,8 @@ public class WorkflowManagerService implements ExtendedLanguageServerService {
                 ActivityGenerator activityGenerator = new ActivityGenerator(semanticModel.get());
                 response.setTextEdits(activityGenerator.genActivity(request.flowNode(), request.activityName(),
                         request.activityParameters(), request.connection(), request.description(),
-                        request.emptyActionArgs(), request.streamElementType(), filePath, this.workspaceManager));
+                        request.emptyActionArgs(), request.streamElementType(), request.connectionAsParam(),
+                        filePath, this.workspaceManager));
             } catch (Throwable e) {
                 response.setError(e);
             }
