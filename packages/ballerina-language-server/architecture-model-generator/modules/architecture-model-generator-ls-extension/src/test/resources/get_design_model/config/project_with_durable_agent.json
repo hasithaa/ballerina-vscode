@@ -1,0 +1,195 @@
+{
+  "description": "Project with a durable agent registering update channels, an activity and a human task",
+  "projectPath": "project_15",
+  "output": {
+    "designModel": {
+      "connections": [],
+      "listeners": [
+        {
+          "symbol": "agentListener",
+          "location": {
+            "filePath": "/Users/hasitha/Source/workflow/ballerina-vscode-integration/packages/ballerina-language-server/architecture-model-generator/modules/architecture-model-generator-ls-extension/src/test/resources/get_design_model/source/project_15/service.bal",
+            "startLine": {
+              "line": 3,
+              "offset": 0
+            },
+            "endLine": {
+              "line": 3,
+              "offset": 65
+            }
+          },
+          "attachedServices": [
+            "28a0f5c3-120d-6db1-d3ba-5386d95dc2d8"
+          ],
+          "kind": "NAMED",
+          "type": "http:Listener",
+          "args": [],
+          "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_http_2.16.4.png",
+          "uuid": "f0837105-4a68-295c-e232-6e250ec9f5ca",
+          "enableFlowModel": true,
+          "sortText": "service.bal3"
+        }
+      ],
+      "services": [
+        {
+          "location": {
+            "filePath": "/Users/hasitha/Source/workflow/ballerina-vscode-integration/packages/ballerina-language-server/architecture-model-generator/modules/architecture-model-generator-ls-extension/src/test/resources/get_design_model/source/project_15/service.bal",
+            "startLine": {
+              "line": 5,
+              "offset": 0
+            },
+            "endLine": {
+              "line": 14,
+              "offset": 1
+            }
+          },
+          "attachedListeners": [
+            "f0837105-4a68-295c-e232-6e250ec9f5ca"
+          ],
+          "connections": [],
+          "workflows": [
+            "dc006be3-6b88-039d-1368-1e0f66430dba"
+          ],
+          "functions": [],
+          "remoteFunctions": [],
+          "resourceFunctions": [
+            {
+              "accessor": "post",
+              "path": "'start",
+              "location": {
+                "filePath": "/Users/hasitha/Source/workflow/ballerina-vscode-integration/packages/ballerina-language-server/architecture-model-generator/modules/architecture-model-generator-ls-extension/src/test/resources/get_design_model/source/project_15/service.bal",
+                "startLine": {
+                  "line": 7,
+                  "offset": 4
+                },
+                "endLine": {
+                  "line": 9,
+                  "offset": 5
+                }
+              },
+              "connections": [],
+              "workflows": [
+                "dc006be3-6b88-039d-1368-1e0f66430dba"
+              ],
+              "workflowSendData": {},
+              "invalidWorkflowSendData": []
+            },
+            {
+              "accessor": "post",
+              "path": "chat",
+              "location": {
+                "filePath": "/Users/hasitha/Source/workflow/ballerina-vscode-integration/packages/ballerina-language-server/architecture-model-generator/modules/architecture-model-generator-ls-extension/src/test/resources/get_design_model/source/project_15/service.bal",
+                "startLine": {
+                  "line": 11,
+                  "offset": 4
+                },
+                "endLine": {
+                  "line": 13,
+                  "offset": 5
+                }
+              },
+              "connections": [],
+              "workflows": [],
+              "workflowSendData": {
+                "dc006be3-6b88-039d-1368-1e0f66430dba": [
+                  "chat"
+                ]
+              },
+              "invalidWorkflowSendData": []
+            }
+          ],
+          "absolutePath": "/agent ",
+          "type": "http:Service",
+          "icon": "https://bcentral-packageicons.azureedge.net/images/ballerina_http_2.16.4.png",
+          "uuid": "28a0f5c3-120d-6db1-d3ba-5386d95dc2d8",
+          "enableFlowModel": true,
+          "sortText": "service.bal5"
+        }
+      ],
+      "workflows": [
+        {
+          "symbol": "orderAgent",
+          "location": {
+            "filePath": "/Users/hasitha/Source/workflow/ballerina-vscode-integration/packages/ballerina-language-server/architecture-model-generator/modules/architecture-model-generator-ls-extension/src/test/resources/get_design_model/source/project_15/main.bal",
+            "startLine": {
+              "line": 12,
+              "offset": 9
+            },
+            "endLine": {
+              "line": 12,
+              "offset": 19
+            }
+          },
+          "kind": "DURABLE_AGENT",
+          "attachedServices": [
+            "28a0f5c3-120d-6db1-d3ba-5386d95dc2d8"
+          ],
+          "attachedFunctions": [],
+          "events": [
+            {
+              "name": "chat",
+              "type": "string",
+              "attachedServices": [
+                "28a0f5c3-120d-6db1-d3ba-5386d95dc2d8"
+              ],
+              "attachedFunctions": []
+            },
+            {
+              "name": "paymentUpdate",
+              "type": "OrderInput",
+              "attachedServices": [],
+              "attachedFunctions": []
+            }
+          ],
+          "humanTasks": [
+            {
+              "name": "approveOrder",
+              "location": {
+                "filePath": "/Users/hasitha/Source/workflow/ballerina-vscode-integration/packages/ballerina-language-server/architecture-model-generator/modules/architecture-model-generator-ls-extension/src/test/resources/get_design_model/source/project_15/main.bal",
+                "startLine": {
+                  "line": 16,
+                  "offset": 10
+                },
+                "endLine": {
+                  "line": 16,
+                  "offset": 74
+                }
+              }
+            }
+          ],
+          "activities": [
+            "3e72c814-10e0-f5a4-16c7-e9007145e53a"
+          ],
+          "invalidSendDataServices": [],
+          "invalidSendDataFunctions": [],
+          "uuid": "dc006be3-6b88-039d-1368-1e0f66430dba",
+          "enableFlowModel": true,
+          "sortText": "main.bal12"
+        }
+      ],
+      "activities": [
+        {
+          "symbol": "checkStock",
+          "location": {
+            "filePath": "/Users/hasitha/Source/workflow/ballerina-vscode-integration/packages/ballerina-language-server/architecture-model-generator/modules/architecture-model-generator-ls-extension/src/test/resources/get_design_model/source/project_15/main.bal",
+            "startLine": {
+              "line": 7,
+              "offset": 9
+            },
+            "endLine": {
+              "line": 7,
+              "offset": 19
+            }
+          },
+          "connections": [],
+          "attachedWorkflows": [
+            "dc006be3-6b88-039d-1368-1e0f66430dba"
+          ],
+          "uuid": "3e72c814-10e0-f5a4-16c7-e9007145e53a",
+          "enableFlowModel": true,
+          "sortText": "main.bal7"
+        }
+      ]
+    }
+  }
+}

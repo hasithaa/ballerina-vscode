@@ -1,0 +1,10 @@
+[package]
+org = "wso2"
+name = "durable_agent_project"
+version = "0.1.0"
+
+[[dependency]]
+org = "ballerina"
+name = "workflow"
+version = "0.7.0"
+repository = "local"

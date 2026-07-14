@@ -29,7 +29,15 @@ import io.ballerina.compiler.api.symbols.RecordTypeSymbol;
 import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.compiler.api.symbols.TypeSymbol;
 import io.ballerina.compiler.api.symbols.VariableSymbol;
+import io.ballerina.compiler.syntax.tree.BasicLiteralNode;
+import io.ballerina.compiler.syntax.tree.FunctionArgumentNode;
+import io.ballerina.compiler.syntax.tree.FunctionDefinitionNode;
+import io.ballerina.compiler.syntax.tree.MethodCallExpressionNode;
+import io.ballerina.compiler.syntax.tree.ModuleMemberDeclarationNode;
 import io.ballerina.compiler.syntax.tree.ModulePartNode;
+import io.ballerina.compiler.syntax.tree.NodeVisitor;
+import io.ballerina.compiler.syntax.tree.PositionalArgumentNode;
+import io.ballerina.compiler.syntax.tree.SeparatedNodeList;
 import io.ballerina.compiler.syntax.tree.SyntaxKind;
 import io.ballerina.designmodelgenerator.core.model.Activity;
 import io.ballerina.designmodelgenerator.core.model.Automation;
@@ -41,6 +49,7 @@ import io.ballerina.designmodelgenerator.core.model.Location;
 import io.ballerina.designmodelgenerator.core.model.ResourceFunction;
 import io.ballerina.designmodelgenerator.core.model.Service;
 import io.ballerina.designmodelgenerator.core.model.Workflow;
+import io.ballerina.flowmodelgenerator.core.Constants;
 import io.ballerina.flowmodelgenerator.core.utils.WorkflowUtil;
 import io.ballerina.modelgenerator.commons.PackageUtil;
 import io.ballerina.projects.Document;
@@ -285,9 +294,83 @@ public class DesignModelGenerator {
             String sortText = lineRange.fileName() + lineRange.startLine().line();
             Workflow workflow = new Workflow(symbol.getName().get(), sortText, getLocation(lineRange),
                     isDurableAgent ? Workflow.KIND_DURABLE_AGENT : Workflow.KIND_WORKFLOW);
-            populateWorkflowEvents(workflow, (FunctionSymbol) symbol);
+            if (isDurableAgent) {
+                // A durable agent declares its update channels and human tasks imperatively in the
+                // body, not in the signature. Collect them up front so sender correlation
+                // (workflow:updateAgent) works regardless of document order.
+                populateAgentCapabilities(workflow, lineRange);
+            } else {
+                populateWorkflowEvents(workflow, (FunctionSymbol) symbol);
+            }
             intermediateModel.workflowMap.put(symbol.getName().get(), workflow);
             intermediateModel.uuidToWorkflowMap.put(workflow.getUuid(), workflow);
+        }
+    }
+
+    /**
+     * Scans a durable agent function's body for capability registrations and reflects them on the overview node:
+     * {@code registerUpdateEvents(name, requestType)} becomes an event row and
+     * {@code registerHumanTask(taskName, ...)} a human-task row — the imperative counterparts of a workflow's
+     * events record parameter and {@code ctx->awaitHumanTask}. Activities (and their connections) are attached
+     * later by the {@link CodeAnalyzer} traversal, which has connection resolution available.
+     */
+    private void populateAgentCapabilities(Workflow workflow, LineRange agentLineRange) {
+        ModulePartNode modulePartNode = this.documentMap.get(agentLineRange.fileName());
+        if (modulePartNode == null) {
+            return;
+        }
+        for (ModuleMemberDeclarationNode member : modulePartNode.members()) {
+            if (member instanceof FunctionDefinitionNode functionNode
+                    && functionNode.lineRange().startLine().line() <= agentLineRange.startLine().line()
+                    && functionNode.lineRange().endLine().line() >= agentLineRange.endLine().line()) {
+                functionNode.functionBody().accept(new AgentCapabilityCollector(workflow));
+                return;
+            }
+        }
+    }
+
+    /**
+     * Collects {@code registerUpdateEvents}/{@code registerHumanTask} registrations from a durable agent body.
+     * Names are resolved from string literals (the designer always generates literals).
+     */
+    private final class AgentCapabilityCollector extends NodeVisitor {
+
+        private final Workflow workflow;
+
+        private AgentCapabilityCollector(Workflow workflow) {
+            this.workflow = workflow;
+        }
+
+        @Override
+        public void visit(MethodCallExpressionNode methodCall) {
+            String methodName = methodCall.methodName().toSourceCode().trim();
+            SeparatedNodeList<FunctionArgumentNode> args = methodCall.arguments();
+            if (Constants.Workflow.REGISTER_UPDATE_EVENTS_METHOD_NAME.equals(methodName)) {
+                String eventName = firstStringLiteralArg(args);
+                if (eventName != null) {
+                    String requestType = args.size() > 1 && args.get(1) instanceof PositionalArgumentNode typeArg
+                            ? typeArg.expression().toSourceCode().trim()
+                            : "anydata";
+                    workflow.addEvent(new Workflow.Event(eventName, requestType));
+                }
+            } else if (Constants.Workflow.REGISTER_HUMAN_TASK_METHOD_NAME.equals(methodName)) {
+                String taskName = firstStringLiteralArg(args);
+                if (taskName != null) {
+                    workflow.addHumanTask(new Workflow.HumanTask(taskName, getLocation(methodCall.lineRange())));
+                }
+            }
+            methodCall.arguments().forEach(arg -> arg.accept(this));
+            methodCall.expression().accept(this);
+        }
+
+        private String firstStringLiteralArg(SeparatedNodeList<FunctionArgumentNode> args) {
+            if (args.isEmpty() || !(args.get(0) instanceof PositionalArgumentNode posArg)
+                    || !(posArg.expression() instanceof BasicLiteralNode literal)
+                    || literal.kind() != SyntaxKind.STRING_LITERAL) {
+                return null;
+            }
+            String text = literal.literalToken().text();
+            return text.length() >= 2 ? text.substring(1, text.length() - 1) : null;
         }
     }
 

@@ -129,6 +129,11 @@ public class CodeAnalyzer extends NodeVisitor {
     private static final String CALL_ACTIVITY_FN_ARG = "activityFunction";
     private static final String CALL_ACTIVITY_ARGS_ARG = "args";
     private static final int SEND_DATA_NAME_ARG_INDEX = 2;
+    private static final String RUN_AGENT_FN_ARG = "agentFunction";
+    private static final String UPDATE_AGENT_EVENT_ARG = "eventName";
+    private static final int UPDATE_AGENT_EVENT_ARG_INDEX = 2;
+    private static final String REGISTER_ACTIVITY_FN_ARG = "activity";
+    private static final String REGISTER_ACTIVITY_BINDINGS_ARG = "bindings";
     private static final Map<String, String> BUILTIN_ACTIVITY_LABELS = Map.of(
             Constants.Workflow.BUILTIN_REST_FUNCTION, Constants.Workflow.BUILTIN_REST_LABEL,
             Constants.Workflow.BUILTIN_SOAP_FUNCTION, Constants.Workflow.BUILTIN_SOAP_LABEL,
@@ -316,11 +321,18 @@ public class CodeAnalyzer extends NodeVisitor {
             return;
         }
         String methodName = qualifiedName.identifier().text();
-        boolean isRun = Constants.Workflow.RUN_METHOD_NAME.equals(methodName);
-        boolean isSendData = Constants.Workflow.SEND_DATA_METHOD_NAME.equals(methodName);
+        // Durable agents are started/driven by their own module functions but attach to the
+        // overview graph exactly like workflows: runDurableAgent draws the trigger edge and
+        // updateAgent the sender→event edge (channels registered via registerUpdateEvents).
+        boolean isRun = Constants.Workflow.RUN_METHOD_NAME.equals(methodName)
+                || Constants.Workflow.RUN_DURABLE_AGENT_FUNCTION_NAME.equals(methodName);
+        boolean isSendData = Constants.Workflow.SEND_DATA_METHOD_NAME.equals(methodName)
+                || Constants.Workflow.UPDATE_AGENT_FUNCTION_NAME.equals(methodName);
         if (!isRun && !isSendData) {
             return;
         }
+        boolean isAgentCall = Constants.Workflow.RUN_DURABLE_AGENT_FUNCTION_NAME.equals(methodName)
+                || Constants.Workflow.UPDATE_AGENT_FUNCTION_NAME.equals(methodName);
         Optional<Symbol> calleeSymbol = semanticModel.symbol(qualifiedName);
         if (calleeSymbol.isEmpty() || !WorkflowUtil.isWorkflowModule(calleeSymbol.get().getModule())) {
             return;
@@ -330,7 +342,7 @@ public class CodeAnalyzer extends NodeVisitor {
             return;
         }
         ExpressionNode workflowArg = getArgExpression(arguments, 0,
-                isRun ? RUN_WORKFLOW_FN_ARG : SEND_DATA_WORKFLOW_FN_ARG);
+                isAgentCall ? RUN_AGENT_FN_ARG : (isRun ? RUN_WORKFLOW_FN_ARG : SEND_DATA_WORKFLOW_FN_ARG));
         if (workflowArg == null) {
             return;
         }
@@ -349,7 +361,11 @@ public class CodeAnalyzer extends NodeVisitor {
         }
         // workflow:sendData(workflowFn, workflowId, dataName, data): correlate the data name with the
         // matching event declared on the workflow function's events record parameter.
-        String eventName = getStringArgValue(arguments, SEND_DATA_NAME_ARG_INDEX, SEND_DATA_NAME_ARG);
+        // workflow:updateAgent(agentFn, agentId, eventName, data): same correlation against the
+        // agent's update channels registered via registerUpdateEvents.
+        String eventName = isAgentCall
+                ? getStringArgValue(arguments, UPDATE_AGENT_EVENT_ARG_INDEX, UPDATE_AGENT_EVENT_ARG)
+                : getStringArgValue(arguments, SEND_DATA_NAME_ARG_INDEX, SEND_DATA_NAME_ARG);
         if (eventName != null && workflow.getEvent(eventName).isPresent()) {
             this.currentFunctionModel.addSentEvent(workflow.getUuid(), eventName);
         } else {
@@ -412,7 +428,29 @@ public class CodeAnalyzer extends NodeVisitor {
             handleConnectionExpr(methodCallExpressionNode.expression());
         }
 
+        handleAgentRegisterActivity(methodCallExpressionNode);
+
         methodCallExpressionNode.arguments().forEach(arg -> arg.accept(this));
+    }
+
+    /**
+     * Attaches the activity registered on a durable agent ({@code ctx.registerActivity(fn, ..., bindings = {...})})
+     * to the agent's overview node — the durable-agent counterpart of {@code ctx->callActivity}. Connections bound
+     * at registration (e.g. the {@code connection} of a built-in activity) attach to the activity node.
+     */
+    private void handleAgentRegisterActivity(MethodCallExpressionNode methodCallExpressionNode) {
+        if (this.currentWorkflow == null || !Constants.Workflow.REGISTER_ACTIVITY_METHOD_NAME.equals(
+                methodCallExpressionNode.methodName().toSourceCode().trim())) {
+            return;
+        }
+        Optional<Symbol> methodSymbol = semanticModel.symbol(methodCallExpressionNode);
+        if (methodSymbol.isEmpty() || !WorkflowUtil.isWorkflowModule(methodSymbol.get().getModule())) {
+            return;
+        }
+        SeparatedNodeList<FunctionArgumentNode> arguments = methodCallExpressionNode.arguments();
+        ExpressionNode activityArg = getArgExpression(arguments, 0, REGISTER_ACTIVITY_FN_ARG);
+        ExpressionNode bindingsArg = getArgExpression(arguments, 3, REGISTER_ACTIVITY_BINDINGS_ARG);
+        attachActivityToCurrentWorkflow(activityArg, bindingsArg, methodCallExpressionNode.lineRange());
     }
 
     @Override
@@ -446,7 +484,18 @@ public class CodeAnalyzer extends NodeVisitor {
         }
         // ctx->callActivity(activityFn, ...): resolve the activity function referenced by the first argument
         ExpressionNode activityArg = getArgExpression(arguments, 0, CALL_ACTIVITY_FN_ARG);
-        if (activityArg == null) {
+        ExpressionNode argsExpr = getArgExpression(arguments, 1, CALL_ACTIVITY_ARGS_ARG);
+        attachActivityToCurrentWorkflow(activityArg, argsExpr, remoteMethodCallActionNode.lineRange());
+    }
+
+    /**
+     * Resolves an activity function reference and attaches it to the current workflow/agent node, together with any
+     * connections referenced by the accompanying arguments map ({@code callActivity} args or {@code registerActivity}
+     * bindings — e.g. {@code {"apiClient": httpClient}} or {@code {httpClient}}).
+     */
+    private void attachActivityToCurrentWorkflow(ExpressionNode activityArg, ExpressionNode argsExpr,
+                                                 LineRange callLineRange) {
+        if (activityArg == null || this.currentWorkflow == null) {
             return;
         }
         Optional<Symbol> activityFnSymbol = semanticModel.symbol(activityArg);
@@ -461,9 +510,8 @@ public class CodeAnalyzer extends NodeVisitor {
                 ? Constants.Workflow.ACTIVITY_MODULE + ":" + activityName : activityName;
         Activity activity = intermediateModel.activityMap.get(activityKey);
         if (activity == null && isBuiltin) {
-            LineRange lineRange = remoteMethodCallActionNode.lineRange();
             activity = new Activity(BUILTIN_ACTIVITY_LABELS.getOrDefault(activityName, activityName),
-                    lineRange.fileName() + lineRange.startLine().line(), getLocation(lineRange));
+                    callLineRange.fileName() + callLineRange.startLine().line(), getLocation(callLineRange));
             intermediateModel.activityMap.put(activityKey, activity);
             intermediateModel.uuidToActivityMap.put(activity.getUuid(), activity);
         }
@@ -473,7 +521,6 @@ public class CodeAnalyzer extends NodeVisitor {
             // Connections can be passed to the activity as arguments,
             // e.g. ctx->callActivity(fetchStatus, {"apiClient": httpClient}) or {httpClient}
             Activity resolvedActivity = activity;
-            ExpressionNode argsExpr = getArgExpression(arguments, 1, CALL_ACTIVITY_ARGS_ARG);
             if (argsExpr instanceof MappingConstructorExpressionNode mappingConstructor) {
                 for (Node field : mappingConstructor.fields()) {
                     if (field instanceof SpecificFieldNode specificFieldNode) {

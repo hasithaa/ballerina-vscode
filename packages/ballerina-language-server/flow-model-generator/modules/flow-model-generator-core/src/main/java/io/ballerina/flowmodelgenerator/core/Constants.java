@@ -169,6 +169,7 @@ public class Constants {
         public static final String RUN_DURABLE_AGENT_LABEL = "Build and Run Agent";
         public static final String RUN_DURABLE_AGENT_DESCRIPTION =
                 "Build the agent from the registered capabilities and run the durable loop";
+        public static final String RUN_DURABLE_AGENT_FUNCTION_NAME = "runDurableAgent";
         public static final String UPDATE_AGENT_FUNCTION_NAME = "updateAgent";
         public static final String UPDATE_AGENT_LABEL = "Update Durable Agent";
         public static final String UPDATE_AGENT_DESCRIPTION =
