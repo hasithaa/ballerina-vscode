@@ -335,7 +335,8 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 editable: true,
                 documentation:
                     "The action's return type is inferred; provide the expected data type T. The activity returns T|error.",
-                value: values[RETURN_TYPE_KEY] ?? DEFAULT_DEPENDENT_RETURN_TYPE,
+                // The typedesc constraint (filtered to data types) is the suggested default.
+                value: values[RETURN_TYPE_KEY] ?? (analysis.returnType || DEFAULT_DEPENDENT_RETURN_TYPE),
                 types: [{ fieldType: "TYPE", selected: true }],
                 enabled: true,
             });
@@ -489,10 +490,11 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
             newProperties[param.name] = { ...property, value };
         }
 
-        // Return type: for dependently-typed actions the user-provided T (activity returns T|error);
-        // otherwise the derived type. Drive both the result type and the databinding target type.
+        // Return type: for dependently-typed actions the user-provided T (activity returns T|error),
+        // falling back to the typedesc-constraint default; otherwise the derived type. Drive both the
+        // result type and the databinding target type.
         const returnType = analysis.dependentReturn
-            ? String(data[RETURN_TYPE_KEY] || DEFAULT_DEPENDENT_RETURN_TYPE)
+            ? String(data[RETURN_TYPE_KEY] || analysis.returnType || DEFAULT_DEPENDENT_RETURN_TYPE)
             : analysis.returnType;
         if (returnType) {
             for (const key of ["type", "targetType"]) {

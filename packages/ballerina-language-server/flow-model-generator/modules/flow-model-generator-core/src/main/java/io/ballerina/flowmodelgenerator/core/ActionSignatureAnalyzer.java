@@ -28,6 +28,7 @@ import io.ballerina.compiler.api.symbols.RecordTypeSymbol;
 import io.ballerina.compiler.api.symbols.ResourceMethodSymbol;
 import io.ballerina.compiler.api.symbols.StreamTypeSymbol;
 import io.ballerina.compiler.api.symbols.TypeDescKind;
+import io.ballerina.compiler.api.symbols.TypeDescTypeSymbol;
 import io.ballerina.compiler.api.symbols.TypeSymbol;
 import io.ballerina.compiler.api.symbols.UnionTypeSymbol;
 import io.ballerina.flowmodelgenerator.core.utils.ParamUtils;
@@ -76,8 +77,9 @@ public final class ActionSignatureAnalyzer {
      * @param supported         whether an activity can be generated automatically
      * @param reasons           when unsupported, the human-readable reasons
      * @param params            the derived activity parameters (empty when unsupported)
-     * @param returnType        the derived activity return type (success type, without {@code |error});
-     *                          empty when {@code dependentReturn} is set (the user provides it)
+     * @param returnType        the derived activity return type (success type, without {@code |error}).
+     *                          When {@code dependentReturn} is set, this is the suggested default —
+     *                          the typedesc constraint filtered to its anydata members (may be empty)
      * @param streamElementType when the action returns a stream, its element type (the activity
      *                          returns {@code streamElementType[]} collected from the stream); else null
      * @param dependentReturn   whether the action's return type depends on a typedesc parameter — the
@@ -126,12 +128,24 @@ public final class ActionSignatureAnalyzer {
         List<String> reasons = new ArrayList<>();
         List<DerivedParam> params = new ArrayList<>();
         boolean dependentReturn = false;
+        String dependentReturnDefault = "";
 
         for (ParameterSymbol param : functionTypeSymbol.params().orElse(List.of())) {
             // A typedesc parameter means the return type is inferred from it: the user provides the
-            // expected type instead of it being derived from the signature.
-            if (CommonUtils.getRawType(param.typeDescriptor()).typeKind() == TypeDescKind.TYPEDESC) {
+            // expected type instead of it being derived from the signature. The typedesc constraint
+            // (filtered to its anydata members) is offered as the default expected type — e.g.
+            // typedesc<string[][]|record {}[]> suggests string[][]|record {}[].
+            TypeSymbol rawParamType = CommonUtils.getRawType(param.typeDescriptor());
+            if (rawParamType.typeKind() == TypeDescKind.TYPEDESC) {
                 dependentReturn = true;
+                TypeSymbol constraint = ((TypeDescTypeSymbol) rawParamType).typeParameter().orElse(null);
+                if (constraint != null) {
+                    String derivedConstraint = deriveDataType(constraint, anydata, semanticModel);
+                    // A bare `anydata` constraint carries no guidance; keep the generic default.
+                    if (derivedConstraint != null && !"anydata".equals(derivedConstraint)) {
+                        dependentReturnDefault = derivedConstraint;
+                    }
+                }
                 continue;
             }
             String name = param.getName().orElse("");
@@ -147,7 +161,8 @@ public final class ActionSignatureAnalyzer {
             }
         }
 
-        String returnType = "";
+        // For dependent returns the typedesc constraint (when informative) is offered as the default.
+        String returnType = dependentReturn ? dependentReturnDefault : "";
         String streamElementType = null;
         Optional<TypeSymbol> optReturnType = functionTypeSymbol.returnTypeDescriptor();
         if (!dependentReturn && optReturnType.isPresent()) {
