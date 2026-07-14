@@ -24,10 +24,28 @@ import { NodeModel } from "./types";
 import { EntryNodeFactory, EntryNodeModel } from "../components/nodes/EntryNode";
 import { ConnectionNodeFactory } from "../components/nodes/ConnectionNode/ConnectionNodeFactory";
 import { ListenerNodeFactory } from "../components/nodes/ListenerNode/ListenerNodeFactory";
-import { LISTENER_NODE_WIDTH, NodeTypes, NODE_GAP_X, ENTRY_NODE_WIDTH, NODE_GAP_Y, LISTENER_NODE_HEIGHT } from "../resources/constants";
+import { ActivityNodeFactory, ActivityNodeModel } from "../components/nodes/ActivityNode";
+import {
+    LISTENER_NODE_WIDTH,
+    NodeTypes,
+    NODE_GAP_X,
+    ENTRY_NODE_WIDTH,
+    ENTRY_NODE_HEIGHT,
+    NODE_GAP_Y,
+    LISTENER_NODE_HEIGHT,
+    ACTIVITY_NODE_WIDTH,
+    ACTIVITY_NODE_HEIGHT,
+} from "../resources/constants";
 import { ListenerNodeModel } from "../components/nodes/ListenerNode";
 import { ConnectionNodeModel } from "../components/nodes/ConnectionNode";
-import { CDConnection, CDResourceFunction, CDFunction, CDService } from "@wso2/ballerina-core";
+import {
+    CDConnection,
+    CDResourceFunction,
+    CDFunction,
+    CDService,
+    CDWorkflow,
+    CDWorkflowEvent,
+} from "@wso2/ballerina-core";
 import { GQLFuncListType, GQLState, PREVIEW_COUNT } from "../components/Diagram";
 
 export function generateEngine(): DiagramEngine {
@@ -44,6 +62,7 @@ export function generateEngine(): DiagramEngine {
     engine.getNodeFactories().registerFactory(new ListenerNodeFactory());
     engine.getNodeFactories().registerFactory(new EntryNodeFactory());
     engine.getNodeFactories().registerFactory(new ConnectionNodeFactory());
+    engine.getNodeFactories().registerFactory(new ActivityNodeFactory());
 
     engine.getLayerFactories().registerFactory(new OverlayLayerFactory());
 
@@ -54,15 +73,29 @@ export function generateEngine(): DiagramEngine {
 export function autoDistribute(engine: DiagramEngine) {
     const model = engine.getModel();
 
-    // Get all nodes by type
+    // Get all nodes by type. Workflows are laid out in their own column so the edges from
+    // their triggers (services/automation) flow left to right without crossing other nodes.
     const listenerNodes = model.getNodes().filter((node) => node.getType() === NodeTypes.LISTENER_NODE);
-    const entryNodes = model.getNodes().filter((node) => node.getType() === NodeTypes.ENTRY_NODE);
+    const allEntryNodes = model.getNodes().filter((node) => node.getType() === NodeTypes.ENTRY_NODE);
+    const entryNodes = allEntryNodes.filter((node) => (node as EntryNodeModel).type !== "workflow");
+    const workflowNodes = allEntryNodes.filter((node) => (node as EntryNodeModel).type === "workflow");
     const connectionNodes = model.getNodes().filter((node) => node.getType() === NodeTypes.CONNECTION_NODE);
+    const activityNodes = model.getNodes().filter((node) => node.getType() === NodeTypes.ACTIVITY_NODE);
 
-    // Set X positions for each column
+    // Set X positions for each column: listeners | entry points | workflows | activities | connections.
+    // The workflow and activity columns collapse when empty.
     const listenerX = 250;
     const entryX = listenerX + LISTENER_NODE_WIDTH + NODE_GAP_X;
-    const connectionX = entryX + ENTRY_NODE_WIDTH + NODE_GAP_X;
+    let nextX = entryX + ENTRY_NODE_WIDTH + NODE_GAP_X;
+    const workflowX = nextX;
+    if (workflowNodes.length > 0) {
+        nextX += ENTRY_NODE_WIDTH + NODE_GAP_X;
+    }
+    const activityX = nextX;
+    if (activityNodes.length > 0) {
+        nextX += ACTIVITY_NODE_WIDTH + NODE_GAP_X;
+    }
+    const connectionX = nextX;
 
     // Separate listeners into connected and unconnected
     const connectedListeners: ListenerNodeModel[] = [];
@@ -92,16 +125,58 @@ export function autoDistribute(engine: DiagramEngine) {
         entryNode.setPosition(entryX, entryNode.getY());
     });
 
+    // Position workflow nodes near the entry points that trigger them or send them data,
+    // stacking downwards to avoid overlaps
+    const workflowsWithDesiredY = workflowNodes.map((node) => {
+        const workflowNode = node as EntryNodeModel;
+        const workflow = workflowNode.node as CDWorkflow;
+        const senderIds = new Set([...(workflow.attachedServices ?? []), ...(workflow.attachedFunctions ?? [])]);
+        workflow.events?.forEach((event) => {
+            event.attachedServices?.forEach((uuid) => senderIds.add(uuid));
+            event.attachedFunctions?.forEach((uuid) => senderIds.add(uuid));
+        });
+        const senderNodes = entryNodes.filter((n) => senderIds.has(n.getID()));
+        const desiredY =
+            senderNodes.length > 0
+                ? senderNodes.reduce((sum, n) => sum + n.getY(), 0) / senderNodes.length
+                : node.getY();
+        return { node: workflowNode, desiredY };
+    });
+    workflowsWithDesiredY.sort((a, b) => a.desiredY - b.desiredY);
+    let workflowBottom = -Infinity;
+    workflowsWithDesiredY.forEach(({ node, desiredY }) => {
+        const y = Math.max(desiredY, workflowBottom + NODE_GAP_Y / 2);
+        node.setPosition(workflowX, y);
+        workflowBottom = y + (node.height || ENTRY_NODE_HEIGHT);
+    });
+
     // Position connection nodes
     connectionNodes.forEach((node, index) => {
         const connectionNode = node as ConnectionNodeModel;
         connectionNode.setPosition(connectionX, node.getY());
     });
 
+    // Position activity nodes next to the workflows that call them
+    const activityStackIndex = new Map<string, number>();
+    activityNodes.forEach((node) => {
+        const activityNode = node as ActivityNodeModel;
+        const attachedWorkflows = activityNode.node.attachedWorkflows ?? [];
+        const callerNodes = workflowNodes.filter((n) => attachedWorkflows.includes(n.getID()));
+        if (callerNodes.length === 0) {
+            activityNode.setPosition(activityX, node.getY());
+            return;
+        }
+        const baseY = Math.min(...callerNodes.map((n) => n.getY()));
+        const stackKey = callerNodes[0].getID();
+        const stackIndex = activityStackIndex.get(stackKey) ?? 0;
+        activityStackIndex.set(stackKey, stackIndex + 1);
+        activityNode.setPosition(activityX, baseY + stackIndex * (ACTIVITY_NODE_HEIGHT + NODE_GAP_Y / 2));
+    });
+
     // Position unconnected listeners below all other nodes
     if (unconnectedListeners.length > 0) {
         // Find the maximum Y position among all nodes
-        const allNodes = [...connectedListeners, ...entryNodes, ...connectionNodes];
+        const allNodes = [...connectedListeners, ...entryNodes, ...workflowNodes, ...activityNodes, ...connectionNodes];
         let maxY = 100; // Default starting position if no other nodes
 
         if (allNodes.length > 0) {
@@ -311,4 +386,20 @@ export const getEntryNodeFunctionPortName = (func: CDFunction | CDResourceFuncti
         return (func as CDResourceFunction).accessor + "-" + (func as CDResourceFunction).path;
     }
     return (func as CDFunction).name;
+};
+
+export const getWorkflowEventPortNameByEventName = (eventName: string) => {
+    return "event-" + eventName;
+};
+
+export const getWorkflowEventPortName = (event: CDWorkflowEvent) => {
+    return getWorkflowEventPortNameByEventName(event.name);
+};
+
+// calculate workflow node height based on the number of event and human task rows
+export const calculateWorkflowNodeHeight = (numRows: number) => {
+    const PADDING = 8;
+    const BASE_HEIGHT = 64 + PADDING;
+    const ROW_HEIGHT = 40 + PADDING;
+    return BASE_HEIGHT + numRows * ROW_HEIGHT + (numRows > 0 ? PADDING : 0);
 };
