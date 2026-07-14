@@ -38,6 +38,7 @@ import {
     BISearchNodesRequest,
     BISearchRequest,
     GenActivityRequest,
+    AnalyzeActivityActionRequest,
     WorkflowDataRequest,
     BISourceCodeRequest,
     BreakpointRequest,
@@ -100,6 +101,7 @@ import {
     getFlowModel,
     getFormDiagnostics,
     genActivity,
+    analyzeActivityAction,
     getAllData,
     getFunctionNames,
     getFunctionNode,
@@ -259,6 +261,7 @@ export function registerBiDiagramRpcHandlers(messenger: Messenger) {
     messenger.onRequest(search, (args: BISearchRequest) => rpcManger.search(args));
     messenger.onRequest(getAllData, (args: WorkflowDataRequest) => rpcManger.getAllData(args));
     messenger.onRequest(genActivity, (args: GenActivityRequest) => rpcManger.genActivity(args));
+    messenger.onRequest(analyzeActivityAction, (args: AnalyzeActivityActionRequest) => rpcManger.analyzeActivityAction(args));
     messenger.onRequest(searchNodes, (args: BISearchNodesRequest) => rpcManger.searchNodes(args));
     messenger.onRequest(getRecordNames, () => rpcManger.getRecordNames());
     messenger.onRequest(getFunctionNames, () => rpcManger.getFunctionNames());

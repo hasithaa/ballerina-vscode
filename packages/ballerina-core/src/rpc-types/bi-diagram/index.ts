@@ -103,6 +103,8 @@ import {
     GetSimpleTypeOfExpressionResponse,
     GenActivityRequest,
     GenActivityResponse,
+    AnalyzeActivityActionRequest,
+    AnalyzeActivityActionResponse,
     WorkflowDataRequest,
     WorkflowDataResponse
 } from "../../interfaces/extended-lang-client";
@@ -218,6 +220,7 @@ export interface BIDiagramAPI {
     search: (params: BISearchRequest) => Promise<BISearchResponse>;
     getAllData: (params: WorkflowDataRequest) => Promise<WorkflowDataResponse>;
     genActivity: (params: GenActivityRequest) => Promise<GenActivityResponse>;
+    analyzeActivityAction: (params: AnalyzeActivityActionRequest) => Promise<AnalyzeActivityActionResponse>;
     searchNodes: (params: BISearchNodesRequest) => Promise<BISearchNodesResponse>;
     getRecordNames: () => Promise<RecordsInWorkspaceMentions>;
     getFunctionNames: () => Promise<RecordsInWorkspaceMentions>;

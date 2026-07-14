@@ -105,6 +105,8 @@ import {
     GetSimpleTypeOfExpressionResponse,
     GenActivityRequest,
     GenActivityResponse,
+    AnalyzeActivityActionRequest,
+    AnalyzeActivityActionResponse,
     WorkflowDataRequest,
     WorkflowDataResponse
 } from "../../interfaces/extended-lang-client";
@@ -221,6 +223,7 @@ export const getEndOfFile: RequestType<EndOfFileRequest, LinePosition> = { metho
 export const search: RequestType<BISearchRequest, BISearchResponse> = { method: `${_preFix}/search` };
 export const getAllData: RequestType<WorkflowDataRequest, WorkflowDataResponse> = { method: `${_preFix}/getAllData` };
 export const genActivity: RequestType<GenActivityRequest, GenActivityResponse> = { method: `${_preFix}/genActivity` };
+export const analyzeActivityAction: RequestType<AnalyzeActivityActionRequest, AnalyzeActivityActionResponse> = { method: `${_preFix}/analyzeActivityAction` };
 export const searchNodes: RequestType<BISearchNodesRequest, BISearchNodesResponse> = { method: `${_preFix}/searchNodes` };
 export const getRecordNames: RequestType<void, RecordsInWorkspaceMentions> = { method: `${_preFix}/getRecordNames` };
 export const getFunctionNames: RequestType<void, RecordsInWorkspaceMentions> = { method: `${_preFix}/getFunctionNames` };

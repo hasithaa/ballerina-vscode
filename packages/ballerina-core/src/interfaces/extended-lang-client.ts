@@ -1025,6 +1025,8 @@ export interface GenActivityRequest {
     activityParameters?: ToolParameters;
     /** When true, the wrapped action call is generated with no arguments (action has non-data types). */
     emptyActionArgs?: boolean;
+    /** When the action returns a stream, its element type T: the activity collects it and returns T[]. */
+    streamElementType?: string;
 }
 
 export interface GenActivityResponse {
@@ -1032,6 +1034,35 @@ export interface GenActivityResponse {
     textEdits?: {
         [key: string]: TextEdit[];
     };
+    errorMsg?: string;
+    stacktrace?: string;
+}
+
+export interface AnalyzeActivityActionRequest {
+    filePath: string;
+    /** Name of the module-level connection variable the action belongs to. */
+    connection: string;
+    /** Name of the action (method) to analyze. */
+    actionName: string;
+    /** REMOTE_ACTION_CALL or RESOURCE_ACTION_CALL — disambiguates same-named remote/resource methods. */
+    nodeKind: string;
+}
+
+export interface ActivityActionAnalysis {
+    /** Whether an activity can be generated from the action automatically. */
+    supported: boolean;
+    /** When unsupported, the human-readable reasons. */
+    reasons: string[];
+    /** The derived activity parameters. */
+    params: { name: string; type: string; required: boolean }[];
+    /** The derived activity return type (success type, without |error). */
+    returnType: string;
+    /** When the action returns a stream, its element type T (the activity returns T[]); else absent. */
+    streamElementType?: string;
+}
+
+export interface AnalyzeActivityActionResponse {
+    analysis?: ActivityActionAnalysis;
     errorMsg?: string;
     stacktrace?: string;
 }
@@ -2169,6 +2200,7 @@ export interface BIInterface extends BaseLangClientInterface {
     updateType: (params: UpdateTypeRequest) => Promise<UpdateTypeResponse>;
     getAllData: (params: WorkflowDataRequest) => Promise<WorkflowDataResponse>;
     genActivity: (params: GenActivityRequest) => Promise<GenActivityResponse>;
+    analyzeActivityAction: (params: AnalyzeActivityActionRequest) => Promise<AnalyzeActivityActionResponse>;
     updateImports: (params: UpdateImportsRequest) => Promise<ImportsInfoResponse>;
     addFunction: (params: AddFunctionRequest) => Promise<AddImportItemResponse>;
     convertJsonToRecordType: (params: JsonToRecordParams) => Promise<TypeDataWithReferences>;

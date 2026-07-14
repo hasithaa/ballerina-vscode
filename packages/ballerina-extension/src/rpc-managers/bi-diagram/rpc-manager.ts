@@ -51,6 +51,8 @@ import {
     BISearchResponse,
     GenActivityRequest,
     GenActivityResponse,
+    AnalyzeActivityActionRequest,
+    AnalyzeActivityActionResponse,
     WorkflowDataRequest,
     WorkflowDataResponse,
     BISourceCodeRequest,
@@ -2189,6 +2191,10 @@ export class BiDiagramRpcManager implements BIDiagramAPI {
         }
         const artifacts = await updateSourceCode({ textEdits: response.textEdits });
         return { artifacts, textEdits: response.textEdits };
+    }
+
+    async analyzeActivityAction(params: AnalyzeActivityActionRequest): Promise<AnalyzeActivityActionResponse> {
+        return StateMachine.langClient().analyzeActivityAction(params);
     }
 
     async getRecordNames(): Promise<RecordsInWorkspaceMentions> {
