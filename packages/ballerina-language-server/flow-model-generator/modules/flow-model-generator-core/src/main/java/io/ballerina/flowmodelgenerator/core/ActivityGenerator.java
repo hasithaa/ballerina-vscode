@@ -42,6 +42,7 @@ import org.eclipse.lsp4j.Range;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -112,6 +113,12 @@ public class ActivityGenerator {
 
         SourceBuilder sourceBuilder = new SourceBuilder(flowNode, workspaceManager, filePath);
         sourceBuilder.acceptImport(Constants.Workflow.WORKFLOW_ORG, Constants.Workflow.WORKFLOW_MODULE);
+
+        // Property-level imports describe the ORIGINAL action's types (io/mime/... editors), which the
+        // derived data-only signature mostly never references — yet SourceBuilder.getProperty() adds
+        // them to the emitted imports as a side effect, producing unused imports. Detach them here and
+        // add back (below) only the ones whose prefix actually appears in the generated signature.
+        Map<String, String> detachedPropertyImports = detachPropertyImports(flowNode);
 
         Set<String> ignoredKeys = new HashSet<>(List.of(Property.VARIABLE_KEY, Property.TYPE_KEY,
                 AgentsGenerator.TARGET_TYPE, Property.CONNECTION_KEY, Property.CHECK_ERROR_KEY));
@@ -253,7 +260,39 @@ public class ActivityGenerator {
         if (AgentsGenerator.needsModuleImport(flowNode, returnType, paramList)) {
             sourceBuilder.acceptImport();
         }
+        // Re-attach only the detached property imports whose prefix the generated signature uses
+        // (e.g. a derived union member like time:Utc), so no unused imports are emitted.
+        String signatureText = returnType + " " + String.join(", ", paramList);
+        for (Map.Entry<String, String> entry : detachedPropertyImports.entrySet()) {
+            if (signatureText.contains(entry.getKey() + ":")) {
+                String[] importParts = entry.getValue().split("/");
+                if (importParts.length == 2) {
+                    sourceBuilder.acceptImport(importParts[0], importParts[1].split(":")[0]);
+                }
+            }
+        }
         return gson.toJsonTree(sourceBuilder.build());
+    }
+
+    /**
+     * Removes the {@code imports} maps from the flow node's properties — {@link SourceBuilder}
+     * silently adds them to the generated imports on every {@code getProperty} call — and returns
+     * their union as a prefix-to-moduleId map so the caller can re-add only the ones the generated
+     * code actually references.
+     */
+    private static Map<String, String> detachPropertyImports(FlowNode flowNode) {
+        Map<String, String> detached = new HashMap<>();
+        if (flowNode.properties() == null) {
+            return detached;
+        }
+        for (Property property : flowNode.properties().values()) {
+            Map<String, String> propertyImports = property.imports();
+            if (propertyImports != null && !propertyImports.isEmpty()) {
+                detached.putAll(propertyImports);
+                propertyImports.clear();
+            }
+        }
+        return detached;
     }
 
     /**

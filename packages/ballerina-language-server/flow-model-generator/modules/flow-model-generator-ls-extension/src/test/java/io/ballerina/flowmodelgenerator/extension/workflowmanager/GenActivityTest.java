@@ -182,6 +182,26 @@ public class GenActivityTest extends AbstractLSTest {
                 "Expected the action call to target the connection parameter, got: " + generated);
     }
 
+    @Test
+    public void testUnusedPropertyImportsDropped() throws IOException {
+        Path configJsonPath = configDir.resolve("gen_activity_remote_action.json");
+        TestConfig base = gson.fromJson(Files.newBufferedReader(configJsonPath), TestConfig.class);
+        JsonObject diagram = base.diagram().getAsJsonObject().deepCopy();
+        // Simulate the editor-type imports the action node template carries (e.g. mime for the
+        // message editor) that the generated data-only signature never references.
+        JsonObject imports = new JsonObject();
+        imports.addProperty("mime", "ballerina/mime");
+        diagram.getAsJsonObject("properties").getAsJsonObject("path").add("imports", imports);
+
+        String filePath = sourceDir.resolve(base.source()).toAbsolutePath().toString();
+        GenActivityRequest request = new GenActivityRequest(filePath, diagram, base.activityName(),
+                base.activityParameters(), base.activityDescription(), base.connection(), false, null, false);
+        JsonObject jsonMap = getResponseAndCloseFile(request, base.source()).getAsJsonObject("textEdits");
+        String generated = jsonMap.toString();
+        Assert.assertFalse(generated.contains("import ballerina/mime"),
+                "Property imports unused by the generated signature must be dropped, got: " + generated);
+    }
+
     private JsonObject sendMutatedRequest(java.util.function.Consumer<JsonObject> diagramMutator,
                                           String connectionOverride) throws IOException {
         Path configJsonPath = configDir.resolve("gen_activity_remote_action.json");
