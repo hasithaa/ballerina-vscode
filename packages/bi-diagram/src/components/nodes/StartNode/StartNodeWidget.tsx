@@ -36,13 +36,14 @@ export namespace NodeStyles {
     export type NodeStyleProp = {
         selected: boolean;
         hovered: boolean;
+        width: number;
     };
     export const Node = styled.div<NodeStyleProp>`
         display: flex;
         flex-direction: column;
         justify-content: space-between;
         align-items: center;
-        width: ${NODE_WIDTH / 3}px;
+        width: ${(props: NodeStyleProp) => props.width}px;
         min-height: ${NODE_HEIGHT / 1.5}px;
         padding: 0 ${NODE_PADDING}px;
         border: ${NODE_BORDER_WIDTH}px solid ${NODE_BORDER_COLOR};
@@ -64,8 +65,8 @@ export namespace NodeStyles {
         font-size: 14px;
     `;
 
-    export const Title = styled(StyledText)`
-        max-width: ${(NODE_WIDTH / 3) - 12}px;
+    export const Title = styled(StyledText)<{ width: number }>`
+        max-width: ${(props: { width: number }) => props.width - 12}px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -85,16 +86,24 @@ export function StartNodeWidget(props: StartNodeWidgetProps) {
     const { model, engine, onClick } = props;
     const [isHovered, setIsHovered] = React.useState(false);
 
+    // The SizingVisitor computes the pill width from the label so it doesn't clip
+    // (viewState.lw + rw); fall back to the classic fixed width when unavailable.
+    const viewState = model.node.viewState;
+    const pillWidth = viewState?.lw && viewState?.rw ? viewState.lw + viewState.rw : NODE_WIDTH / 3;
+
     return (
         <NodeStyles.Node
             selected={model.isSelected()}
             hovered={isHovered}
+            width={pillWidth}
         // onMouseEnter={() => setIsHovered(true)}
         // onMouseLeave={() => setIsHovered(false)}
         >
             <NodeStyles.TopPortWidget port={model.getPort("in")!} engine={engine} />
             <Tooltip content={model.node.metadata.label || "Start"} containerSx={{ cursor: "default" }}>
-                <NodeStyles.Title data-testid="start-node">{model.node.metadata.label || "Start"}</NodeStyles.Title>
+                <NodeStyles.Title data-testid="start-node" width={pillWidth}>
+                    {model.node.metadata.label || "Start"}
+                </NodeStyles.Title>
             </Tooltip>
             <NodeStyles.BottomPortWidget port={model.getPort("out")!} engine={engine} />
         </NodeStyles.Node>

@@ -273,7 +273,8 @@ public class DesignModelGenerator {
 
     private void populateModuleLevelWorkflows(IntermediateModel intermediateModel) {
         for (Symbol symbol : this.semanticModel.moduleSymbols()) {
-            if (!WorkflowUtil.isWorkflowFunction(symbol)) {
+            boolean isDurableAgent = WorkflowUtil.isDurableAgentFunction(symbol);
+            if (!WorkflowUtil.isWorkflowFunction(symbol) && !isDurableAgent) {
                 continue;
             }
 
@@ -282,7 +283,8 @@ public class DesignModelGenerator {
             }
             LineRange lineRange = symbol.getLocation().get().lineRange();
             String sortText = lineRange.fileName() + lineRange.startLine().line();
-            Workflow workflow = new Workflow(symbol.getName().get(), sortText, getLocation(lineRange));
+            Workflow workflow = new Workflow(symbol.getName().get(), sortText, getLocation(lineRange),
+                    isDurableAgent ? Workflow.KIND_DURABLE_AGENT : Workflow.KIND_WORKFLOW);
             populateWorkflowEvents(workflow, (FunctionSymbol) symbol);
             intermediateModel.workflowMap.put(symbol.getName().get(), workflow);
             intermediateModel.uuidToWorkflowMap.put(workflow.getUuid(), workflow);

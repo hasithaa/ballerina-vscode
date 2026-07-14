@@ -35,6 +35,15 @@ export function WorkflowPanel() {
         });
     };
 
+    const handleDurableAgentClick = () => {
+        rpcClient.getVisualizerRpcClient().openView({
+            type: EVENT_TYPE.OPEN_VIEW,
+            location: {
+                view: MACHINE_VIEW.BIDurableAgentForm,
+            },
+        });
+    };
+
     return (
         <PanelViewMore>
             <TitleWrapper>
@@ -47,6 +56,12 @@ export function WorkflowPanel() {
                     icon={<Icon name="bi-flowchart" />}
                     title="Workflow"
                     onClick={handleClick}
+                />
+                <ButtonCard
+                    id="durable-agent"
+                    icon={<Icon name="bi-ai-agent" />}
+                    title="Durable Agent"
+                    onClick={handleDurableAgentClick}
                 />
             </CardGrid>
         </PanelViewMore>

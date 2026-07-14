@@ -119,6 +119,10 @@ public class ModuleNodeTransformer extends NodeTransformer<Optional<Artifact>> {
             functionBuilder
                     .name(functionName)
                     .type(Artifact.Type.WORKFLOW);
+        } else if (functionSymbol.isPresent() && WorkflowUtil.isDurableAgentFunction(functionSymbol.get())) {
+            functionBuilder
+                    .name(functionName)
+                    .type(Artifact.Type.DURABLE_AGENT);
         } else if (functionSymbol.isPresent() && WorkflowUtil.isActivityFunction(functionSymbol.get())) {
             functionBuilder
                     .name(functionName)
