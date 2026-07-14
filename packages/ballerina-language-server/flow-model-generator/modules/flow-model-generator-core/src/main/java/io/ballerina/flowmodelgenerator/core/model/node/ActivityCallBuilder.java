@@ -691,8 +691,13 @@ public class ActivityCallBuilder extends CallBuilder {
                     continue;
                 }
 
-                Object value = entry.getValue().value();
-                if (value == null) {
+                if (entry.getValue().value() == null) {
+                    continue;
+                }
+                // toSourceCode() converts structured values (map/array form values) into Ballerina
+                // literals; the raw value.toString() would emit the internal form-field objects.
+                String source = entry.getValue().toSourceCode();
+                if (source == null || source.isEmpty()) {
                     continue;
                 }
 
@@ -706,7 +711,7 @@ public class ActivityCallBuilder extends CallBuilder {
                         .whiteSpace()
                         .name(entry.getKey())
                         .keyword(SyntaxKind.COLON_TOKEN)
-                        .name(value.toString());
+                        .name(source);
             }
         }
         sourceBuilder.token()
