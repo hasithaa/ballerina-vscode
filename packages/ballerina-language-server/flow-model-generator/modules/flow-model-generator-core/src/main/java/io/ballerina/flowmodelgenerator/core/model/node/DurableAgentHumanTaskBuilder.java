@@ -85,6 +85,27 @@ public class DurableAgentHumanTaskBuilder extends CallBuilder {
                 "approveRequest", true);
         addStringProperty(USER_ROLES_KEY, "User Roles",
                 "Role(s) permitted to complete this task", "MANAGER", true);
+        // The completion type drives the task inbox's completion form (schema generation and
+        // runtime validation of the submitted payload) — typically a record type.
+        properties().custom()
+                .metadata()
+                    .label("Completion Type")
+                    .description("The type of the result a person submits when completing this task; "
+                            + "drives the completion form rendered in the task inbox")
+                    .stepOut()
+                .type()
+                    .fieldType(Property.ValueType.TYPE)
+                    .ballerinaType("")
+                    .selected(true)
+                    .stepOut()
+                .codedata()
+                    .kind(ParameterData.Kind.REQUIRED.name())
+                    .stepOut()
+                .placeholder("ApprovalResult")
+                .value("")
+                .editable(true)
+                .stepOut()
+                .addProperty(RESULT_TYPE_KEY);
         addStringProperty(TITLE_KEY, "Title",
                 "Short summary shown in the task inbox", "", false);
         addDocTextProperty(DESCRIPTION_KEY, "Description",

@@ -178,7 +178,7 @@ public class WorkflowManagerService implements ExtendedLanguageServerService {
                         .filter(symbol -> symbol.kind() == SymbolKind.VARIABLE)
                         .filter(symbol -> symbol.getName().orElse("").equals(request.connection()))
                         .findFirst()
-                        .flatMap(symbol -> WorkflowUtil.resolveConnectionClass(
+                        .flatMap(symbol -> WorkflowUtil.resolveWrappableClass(
                                 ((VariableSymbol) symbol).typeDescriptor()))
                         .orElseThrow(() -> new IllegalStateException(
                                 "Connection '" + request.connection() + "' is not found in the module"));

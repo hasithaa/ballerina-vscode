@@ -45,6 +45,9 @@ import { createDefaultParameterValue, createToolParameters } from "../AIChatAgen
 import { ActivityWizardSteps } from "./ActivityWizardSteps";
 import { REMOTE_ACTION_CALL, RESOURCE_ACTION_CALL } from "../../../constants";
 
+// Plain object methods (e.g. ai:Agent.run) are wrappable too — dot calls, not remote actions.
+const METHOD_CALL = "METHOD_CALL";
+
 const LoaderContainer = styled.div`
     display: flex;
     justify-content: center;
@@ -204,7 +207,65 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                     .at(0)
                     .items.filter((item) => !item.metadata.label.startsWith("_"));
             }
-            setCategories(convertBICategoriesToSidePanelCategories(connectionsCategory));
+            const allCategories = [...connectionsCategory];
+
+            // AI model providers are client objects excluded from the Connections category; agents
+            // are plain classes whose run() is a normal method. Both are wrappable as activities,
+            // so surface them in their own groups.
+            try {
+                const providersResponse = await rpcClient.getBIDiagramRpcClient().getAvailableModelProviders({
+                    position: { line: 0, offset: 0 },
+                    filePath: fileName,
+                });
+                const providerCategories = (providersResponse?.categories as Category[]) ?? [];
+                if (providerCategories.length > 0) {
+                    allCategories.push({
+                        metadata: { label: "AI Model Providers", description: "Wrap a model call as an activity" },
+                        items: providerCategories,
+                    } as Category);
+                }
+            } catch (error) {
+                console.warn(">>> Error fetching model providers for the activity wizard", { error });
+            }
+            try {
+                const agentsResponse = await rpcClient.getBIDiagramRpcClient().getAvailableAgents({
+                    position: { line: 0, offset: 0 },
+                    filePath: fileName,
+                });
+                const agentCategories = (agentsResponse?.categories as Category[]) ?? [];
+                // An agent's only wrappable action is run(), a plain method the action provider
+                // does not list — synthesize the item.
+                const agentItems = agentCategories.map((agent) => ({
+                    metadata: {
+                        label: agent.metadata?.label,
+                        description: "Run the agent with a query",
+                    },
+                    items: [
+                        {
+                            metadata: { label: "run", description: "Runs the agent with the given query" },
+                            codedata: {
+                                node: METHOD_CALL,
+                                org: "ballerina",
+                                module: "ai",
+                                object: "Agent",
+                                symbol: "run",
+                                parentSymbol: agent.metadata?.label,
+                            },
+                            enabled: true,
+                        },
+                    ],
+                }));
+                if (agentItems.length > 0) {
+                    allCategories.push({
+                        metadata: { label: "AI Agents", description: "Wrap an agent run as an activity" },
+                        items: agentItems,
+                    } as unknown as Category);
+                }
+            } catch (error) {
+                console.warn(">>> Error fetching agents for the activity wizard", { error });
+            }
+
+            setCategories(convertBICategoriesToSidePanelCategories(allCategories));
         } catch (error) {
             console.error(">>> Error fetching connections", { error });
             await rpcClient.getCommonRpcClient().showErrorMessage({
@@ -224,6 +285,8 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 return `${codeData.parentSymbol} -> ${codeData.symbol} ${codeData.resourcePath}`;
             case REMOTE_ACTION_CALL:
                 return `${codeData.parentSymbol} -> ${codeData.symbol}`;
+            case METHOD_CALL:
+                return `${codeData.parentSymbol}.${codeData.symbol}`;
             default:
                 return "";
         }
@@ -368,8 +431,9 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
         if (isSelectingNodeRef.current) {
             return;
         }
-        if (nodeId !== REMOTE_ACTION_CALL && nodeId !== RESOURCE_ACTION_CALL) {
-            console.warn(">>> Only remote and resource actions can be wrapped as activities", { nodeId });
+        if (nodeId !== REMOTE_ACTION_CALL && nodeId !== RESOURCE_ACTION_CALL && nodeId !== METHOD_CALL) {
+            console.warn(">>> Only remote/resource actions and object methods can be wrapped as activities",
+                { nodeId });
             return;
         }
         isSelectingNodeRef.current = true;

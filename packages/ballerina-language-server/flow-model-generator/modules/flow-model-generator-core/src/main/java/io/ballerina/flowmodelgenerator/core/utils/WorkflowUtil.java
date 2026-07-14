@@ -339,4 +339,23 @@ public class WorkflowUtil {
         }
         return Optional.empty();
     }
+
+    /**
+     * Resolves the given type to any class symbol — client or plain. Used by the
+     * create-activity-from-connection wizard, which can also wrap methods of non-client classes
+     * such as {@code ai:Agent} (whose {@code run()} is a normal method, not a remote action).
+     *
+     * @param typeSymbol the variable type to inspect
+     * @return the {@link ClassSymbol} if {@code typeSymbol} resolves to a class
+     */
+    public static Optional<ClassSymbol> resolveWrappableClass(TypeSymbol typeSymbol) {
+        if (typeSymbol == null) {
+            return Optional.empty();
+        }
+        TypeSymbol resolved = TypeUtils.resolveTypeReference(typeSymbol);
+        if (resolved instanceof ClassSymbol classSymbol) {
+            return Optional.of(classSymbol);
+        }
+        return Optional.empty();
+    }
 }

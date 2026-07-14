@@ -112,7 +112,8 @@ public class ActivityGenerator {
         FlowNode flowNode = gson.fromJson(node, FlowNode.class);
         Property activityParams = gson.fromJson(activityParameters, Property.class);
         NodeKind nodeKind = flowNode.codedata().node();
-        if (nodeKind != NodeKind.REMOTE_ACTION_CALL && nodeKind != NodeKind.RESOURCE_ACTION_CALL) {
+        if (nodeKind != NodeKind.REMOTE_ACTION_CALL && nodeKind != NodeKind.RESOURCE_ACTION_CALL
+                && nodeKind != NodeKind.METHOD_CALL) {
             throw new IllegalStateException("Unsupported node kind to generate an activity: " + nodeKind);
         }
 
@@ -208,7 +209,15 @@ public class ActivityGenerator {
         }
 
         String callTarget = connectionAsParam ? CONNECTION_PARAM_NAME : connectionName;
-        if (nodeKind == NodeKind.REMOTE_ACTION_CALL) {
+        if (nodeKind == NodeKind.METHOD_CALL) {
+            // Plain object method (e.g. ai:Agent.run) — dot call instead of a remote action.
+            sourceBuilder.token()
+                    .name(callTarget)
+                    .keyword(SyntaxKind.DOT_TOKEN)
+                    .name(flowNode.codedata().symbol())
+                    .stepOut()
+                    .functionParameters(flowNode, ignoredKeys);
+        } else if (nodeKind == NodeKind.REMOTE_ACTION_CALL) {
             sourceBuilder.token()
                     .name(callTarget)
                     .keyword(SyntaxKind.RIGHT_ARROW_TOKEN)
