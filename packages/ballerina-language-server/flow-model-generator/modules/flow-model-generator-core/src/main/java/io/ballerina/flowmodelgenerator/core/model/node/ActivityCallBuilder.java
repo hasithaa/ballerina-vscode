@@ -42,7 +42,6 @@ import io.ballerina.flowmodelgenerator.core.model.node.builtin.BuiltinActivitySt
 import io.ballerina.flowmodelgenerator.core.model.node.builtin.EmailActivityStrategy;
 import io.ballerina.flowmodelgenerator.core.model.node.builtin.RestActivityStrategy;
 import io.ballerina.flowmodelgenerator.core.model.node.builtin.SoapActivityStrategy;
-import io.ballerina.flowmodelgenerator.core.utils.ConnectorUtil;
 import io.ballerina.flowmodelgenerator.core.utils.FileSystemUtils;
 import io.ballerina.flowmodelgenerator.core.utils.ParamUtils;
 import io.ballerina.flowmodelgenerator.core.utils.WorkflowUtil;
@@ -338,7 +337,9 @@ public class ActivityCallBuilder extends CallBuilder {
             return new ConnectionSelectorData(null, null);
         }
         ModuleInfo connectorModuleInfo = ModuleInfo.from(connectionModule.get().id());
-        String searchNodesKind = ConnectorUtil.getConnectionCategory(connectorModuleInfo.moduleName());
+        // searchNodes treats non-NodeKind kind strings as a module-prefix filter (e.g. "HTTP" matches
+        // module "http"), so pass the connector module name to list its existing connections.
+        String searchNodesKind = connectorModuleInfo.moduleName();
         Codedata connector = new Codedata.Builder<>(null)
                 .node(NodeKind.NEW_CONNECTION)
                 .org(connectorModuleInfo.org())
