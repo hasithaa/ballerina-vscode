@@ -174,6 +174,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     const selectedClientName = useRef<string>();
     const initialCategoriesRef = useRef<any[]>([]);
     const showEditForm = useRef<boolean>(false);
+    // True while the call form open is step 3 of the create-activity-from-connection wizard.
+    const [showActivityCallStep, setShowActivityCallStep] = useState<boolean>(false);
     const selectedNodeMetadata = useRef<{ nodeId: string; metadata: any; fileName: string }>();
     const shouldUpdateLineRangeRef = useRef<boolean>(false);
     const updatedNodeRef = useRef<FlowNode>(undefined);
@@ -900,6 +902,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
     const resetNodeSelectionStates = () => {
         setShowSidePanel(false);
         setSidePanelView(SidePanelView.NODE_LIST);
+        setShowActivityCallStep(false);
         setSubPanel({ view: SubPanelView.UNDEFINED });
         setSelectedNodeId(undefined);
         selectedNodeRef.current = undefined;
@@ -2378,6 +2381,8 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 selectedNodeRef.current = template.flowNode;
                 nodeTemplateRef.current = template.flowNode;
                 showEditForm.current = false;
+                // Step 3 of the create-activity wizard: wire the workflow data into the call.
+                setShowActivityCallStep(true);
                 // The activity list frame pushed on entry stays on the stack, so the form's back
                 // button returns to the activity list.
                 setSidePanelView(SidePanelView.FORM);
@@ -3313,6 +3318,7 @@ export function BIFlowDiagram(props: BIFlowDiagramProps) {
                 nodeFormTemplate={nodeTemplateRef.current}
                 selectedClientName={selectedClientName.current}
                 showEditForm={showEditForm.current}
+                showActivityCallStep={showActivityCallStep}
                 targetLineRange={targetLineRange}
                 connections={model?.connections}
                 fileName={model?.fileName}

@@ -44,6 +44,7 @@ import { LoaderContainer } from "../../../components/RelativeLoader/styles";
 import { ConnectionListItem } from "@wso2/wso2-platform-core";
 import { ConnectorErrorView } from "./components/ErrorContainer";
 import { NewActivityFromConnection } from "./NewActivityFromConnection";
+import { ActivityWizardSteps } from "./ActivityWizardSteps";
 
 const Container = styled.div`
     display: flex;
@@ -102,6 +103,8 @@ interface PanelManagerProps {
     nodeFormTemplate?: FlowNode;
     selectedClientName?: string;
     showEditForm?: boolean;
+    /** True when the call form open is step 3 of the create-activity-from-connection wizard. */
+    showActivityCallStep?: boolean;
     targetLineRange?: LineRange;
     connections?: any[];
     fileName?: string;
@@ -187,6 +190,7 @@ export function PanelManager(props: PanelManagerProps) {
         nodeFormTemplate,
         selectedClientName,
         showEditForm,
+        showActivityCallStep,
         targetLineRange,
         connections,
         fileName,
@@ -721,6 +725,8 @@ export function PanelManager(props: PanelManagerProps) {
 
             case SidePanelView.FORM:
                 return (
+                    <>
+                    {showActivityCallStep && <ActivityWizardSteps activeStep={3} />}
                     <FlowNodeForm
                         key={selectedNode?.id ?? 'no-node'}
                         fileName={fileName}
@@ -741,6 +747,7 @@ export function PanelManager(props: PanelManagerProps) {
                         handleOnFormSubmit={onSubmitForm}
                         navigateToPanel={onNavigateToPanel}
                     />
+                    </>
                 );
 
             case SidePanelView.ALL:

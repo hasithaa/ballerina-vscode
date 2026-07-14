@@ -42,6 +42,7 @@ import { convertBICategoriesToSidePanelCategories } from "../../../utils/bi";
 import ArtifactForm from "../Forms/ArtifactForm";
 import { RelativeLoader } from "../../../components/RelativeLoader";
 import { createDefaultParameterValue, createToolParameters } from "../AIChatAgent/formUtils";
+import { ActivityWizardSteps } from "./ActivityWizardSteps";
 import { REMOTE_ACTION_CALL, RESOURCE_ACTION_CALL } from "../../../constants";
 
 const LoaderContainer = styled.div`
@@ -98,34 +99,13 @@ enum PanelView {
     UNSUPPORTED = "UNSUPPORTED",
 }
 
-const INITIAL_FIELDS: FormField[] = [
-    {
-        key: `name`,
-        label: "Activity Name",
-        type: "IDENTIFIER",
-        optional: false,
-        editable: true,
-        documentation: "Enter a unique name for the activity.",
-        value: "",
-        types: [{ fieldType: "IDENTIFIER", scope: "Global", selected: false }],
-        enabled: true,
-    },
-    {
-        key: `description`,
-        label: "Description",
-        type: "TEXTAREA",
-        optional: true,
-        editable: true,
-        documentation: "Describe what this activity does.",
-        value: "",
-        types: [{ fieldType: "STRING", selected: false }],
-        enabled: true,
-    },
-];
-
 // The return-type field key. The action node's own `type` property key is also "type", so the derived
 // value written on submit targets both this field and the flow node property.
 const RETURN_TYPE_KEY = "type";
+// Suffix for the inline value field shown when a parameter is not exposed as an activity parameter.
+const DEFAULT_VALUE_SUFFIX = "__default";
+// Default type offered when the action's return type is inferred (dependently typed).
+const DEFAULT_DEPENDENT_RETURN_TYPE = "json";
 
 interface NewActivityFromConnectionProps {
     /** Path of the file the workflow diagram is rendered for. The activity is added to this file. */
@@ -139,16 +119,22 @@ interface NewActivityFromConnectionProps {
 }
 
 /**
- * "Create new Activity from Action" wizard. The user picks a connection (or creates one), selects one
- * of its actions, and gets a checkbox form: the action's parameters (derived by the LS — required ones
- * pre-selected and locked, optional ones selectable) and the derived return type. No expressions are
- * entered here. On create, the backend generates a `@workflow:Activity` passthrough wrapper (the
- * selected parameters become the activity's parameters, the connection is closed over, and a stream
- * return is collected into an array), and the caller then opens the normal callActivity form with the
- * new activity selected so the workflow data is wired there.
+ * "Create new Activity from Action" wizard (step 1 and 2 of the select-action → create-activity →
+ * call-activity flow). The user picks a connection (or creates one), selects one of its actions, and
+ * gets a selection form driven by the LS signature analysis:
  *
- * When the action's signature cannot be wrapped automatically (non-data types, rest parameters, ...),
- * the wizard explains why and shows the manual steps instead.
+ * <ul>
+ *   <li>Each derived parameter is a checkbox. Checked, it becomes an activity parameter (the caller
+ *       supplies the value at call time). Unchecked, an inline value field appears and that value is
+ *       baked into the action call inside the activity — required parameters must then have a value,
+ *       optional ones left empty are omitted (the action default applies).</li>
+ *   <li>The derived return type is read-only, except for dependently-typed actions where the user
+ *       provides the expected type T and the activity returns {@code T|error}.</li>
+ * </ul>
+ *
+ * On create, the backend generates the `@workflow:Activity` passthrough wrapper (connection closed
+ * over, stream returns collected into arrays), and the caller opens the normal callActivity form with
+ * the new activity selected (step 3) where the workflow data is wired in.
  */
 export function NewActivityFromConnection(props: NewActivityFromConnectionProps): JSX.Element {
     const { fileName, onActivityCreated, onBack, onClose } = props;
@@ -156,7 +142,7 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
 
     const [panelView, setPanelView] = useState<PanelView>(PanelView.CONNECTION_LIST);
     const [categories, setCategories] = useState<PanelCategory[]>([]);
-    const [fields, setFields] = useState<FormField[]>(INITIAL_FIELDS);
+    const [fields, setFields] = useState<FormField[]>([]);
     const [loading, setLoading] = useState<boolean>(false);
     const [saving, setSaving] = useState<boolean>(false);
     const [unsupportedReasons, setUnsupportedReasons] = useState<string[]>([]);
@@ -165,6 +151,10 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
     const selectedNodeRef = useRef<AvailableNode>(undefined);
     const analysisRef = useRef<ActivityActionAnalysis>(undefined);
     const isSelectingNodeRef = useRef<boolean>(false);
+    // Which parameters are exposed as activity parameters (checkbox state), and the latest form
+    // values — used to rebuild the field list on checkbox toggles without losing user input.
+    const checkedParamsRef = useRef<Record<string, boolean>>({});
+    const formValuesRef = useRef<FormValues>({});
 
     useEffect(() => {
         fetchConnections();
@@ -237,6 +227,103 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
         }
     };
 
+    /**
+     * Builds the wizard's field list for the current checkbox state, carrying over the given form
+     * values so toggling a checkbox does not discard what the user has already entered.
+     */
+    const buildWizardFields = (
+        analysis: ActivityActionAnalysis,
+        checked: Record<string, boolean>,
+        values: FormValues
+    ): FormField[] => {
+        const wizardFields: FormField[] = [
+            {
+                key: `name`,
+                label: "Activity Name",
+                type: "IDENTIFIER",
+                optional: false,
+                editable: true,
+                documentation: "Enter a unique name for the activity.",
+                value: values["name"] ?? "",
+                types: [{ fieldType: "IDENTIFIER", scope: "Global", selected: false }],
+                enabled: true,
+            },
+            {
+                key: `description`,
+                label: "Description",
+                type: "TEXTAREA",
+                optional: true,
+                editable: true,
+                documentation: "Describe what this activity does.",
+                value: values["description"] ?? "",
+                types: [{ fieldType: "STRING", selected: false }],
+                enabled: true,
+            },
+        ];
+
+        for (const param of analysis.params || []) {
+            const isChecked = checked[param.name] === true;
+            wizardFields.push({
+                key: param.name,
+                label: param.name,
+                type: "FLAG",
+                optional: true,
+                editable: true,
+                documentation: `${param.type}${param.required ? " (required)" : ""} — check to expose as an activity parameter, uncheck to set a fixed value.`,
+                value: isChecked,
+                types: [{ fieldType: "FLAG", selected: true }],
+                enabled: true,
+            });
+            if (!isChecked) {
+                // Not exposed: the value entered here is baked into the action call inside the
+                // activity. Required parameters must have one; optional ones left empty are omitted.
+                wizardFields.push({
+                    key: `${param.name}${DEFAULT_VALUE_SUFFIX}`,
+                    label: `${param.name} value`,
+                    type: "EXPRESSION",
+                    optional: !param.required,
+                    editable: true,
+                    documentation: param.required
+                        ? `Value used for '${param.name}' in the action call (required).`
+                        : `Value used for '${param.name}' in the action call; leave empty to use the action's default.`,
+                    value: values[`${param.name}${DEFAULT_VALUE_SUFFIX}`] ?? "",
+                    types: [{ fieldType: "EXPRESSION", ballerinaType: param.type, selected: true }],
+                    enabled: true,
+                });
+            }
+        }
+
+        if (analysis.dependentReturn) {
+            wizardFields.push({
+                key: RETURN_TYPE_KEY,
+                label: "Return Type",
+                type: "TYPE",
+                optional: false,
+                editable: true,
+                documentation:
+                    "The action's return type is inferred; provide the expected data type T. The activity returns T|error.",
+                value: values[RETURN_TYPE_KEY] ?? DEFAULT_DEPENDENT_RETURN_TYPE,
+                types: [{ fieldType: "TYPE", selected: true }],
+                enabled: true,
+            });
+        } else if (analysis.returnType) {
+            wizardFields.push({
+                key: RETURN_TYPE_KEY,
+                label: "Return Type",
+                type: "TYPE",
+                optional: false,
+                editable: false,
+                documentation: analysis.streamElementType
+                    ? "The action returns a stream; the activity collects it and returns an array."
+                    : "The data type this activity returns.",
+                value: analysis.returnType,
+                types: [{ fieldType: "TYPE", selected: true }],
+                enabled: true,
+            });
+        }
+        return wizardFields;
+    };
+
     const handleOnSelectNode = async (nodeId: string, metadata?: any) => {
         if (isSelectingNodeRef.current) {
             return;
@@ -291,49 +378,38 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
             const templateDescription = (nodeTemplate.flowNode?.metadata?.description || "")
                 .replace(/```[\s\S]*?```/g, "")
                 .trim();
-            const baseFields = INITIAL_FIELDS.map((field) =>
-                field.key === "description" ? { ...field, value: templateDescription } : field
-            );
 
-            // One checkbox per derived parameter: required ones are pre-selected and locked; optional
-            // ones are selectable. The parameter name and derived type are shown read-only.
-            const paramFields: FormField[] = (analysis.params || []).map((param) => ({
-                key: param.name,
-                label: param.name,
-                type: "FLAG",
-                optional: !param.required,
-                editable: !param.required,
-                documentation: param.required ? `${param.type} (required)` : param.type,
-                value: param.required,
-                types: [{ fieldType: "FLAG", selected: true }],
-                enabled: true,
-            }));
+            // Everything is exposed as an activity parameter by default; unchecking switches a
+            // parameter to a fixed value provided in the form.
+            const checked: Record<string, boolean> = {};
+            for (const param of analysis.params || []) {
+                checked[param.name] = true;
+            }
+            checkedParamsRef.current = checked;
+            formValuesRef.current = { description: templateDescription };
 
-            const returnTypeField: FormField[] = analysis.returnType
-                ? [
-                      {
-                          key: RETURN_TYPE_KEY,
-                          label: "Return Type",
-                          type: "TYPE",
-                          optional: false,
-                          editable: false,
-                          documentation: analysis.streamElementType
-                              ? "The action returns a stream; the activity collects it and returns an array."
-                              : "The data type this activity returns.",
-                          value: analysis.returnType,
-                          types: [{ fieldType: "TYPE", selected: true }],
-                          enabled: true,
-                      },
-                  ]
-                : [];
-
-            setFields([...baseFields, ...paramFields, ...returnTypeField]);
+            setFields(buildWizardFields(analysis, checked, formValuesRef.current));
             setPanelView(PanelView.ACTIVITY_FORM);
         } catch (error) {
             console.error(">>> Error preparing the create-activity form", error);
         } finally {
             setLoading(false);
             isSelectingNodeRef.current = false;
+        }
+    };
+
+    const handleFormChange = (fieldKey: string, value: any, allValues: FormValues) => {
+        formValuesRef.current = { ...formValuesRef.current, ...allValues, [fieldKey]: value };
+        const analysis = analysisRef.current;
+        if (!analysis) {
+            return;
+        }
+        // A parameter checkbox toggled: rebuild the field list so the inline value field for that
+        // parameter appears/disappears, carrying the latest values over.
+        if ((analysis.params || []).some((param) => param.name === fieldKey)) {
+            const checked = { ...checkedParamsRef.current, [fieldKey]: value === true };
+            checkedParamsRef.current = checked;
+            setFields(buildWizardFields(analysis, checked, formValuesRef.current));
         }
     };
 
@@ -350,34 +426,36 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
             return;
         }
 
-        // Selected parameters (required always; optional when checked) become the activity's
-        // parameters, passed straight through to the action call.
-        const selectedParams = (analysis.params || []).filter(
-            (param) => param.required || data[param.name] === true
-        );
+        // Checked parameters become the activity's parameters, passed straight through to the action
+        // call; unchecked ones get their form-provided value baked into the call (empty optional
+        // values omit the argument so the action default applies).
+        const checked = checkedParamsRef.current;
         const activityParameters: ToolParameters = createToolParameters();
         activityParameters.metadata = { label: "Parameters", description: "Activity function parameters" };
         const parametersValue = activityParameters.value as ToolParametersValue;
-        for (const param of selectedParams) {
-            parametersValue[param.name] = createDefaultParameterValue({ value: param.name, type: param.type });
-        }
-
-        const selectedNames = new Set(selectedParams.map((param) => param.name));
         const newProperties = { ...(clonedFlowNode.properties || {}) } as Record<string, Property>;
         for (const param of analysis.params || []) {
+            const isChecked = checked[param.name] === true;
+            if (isChecked) {
+                parametersValue[param.name] = createDefaultParameterValue({ value: param.name, type: param.type });
+            }
             const property = newProperties[param.name];
             if (!property) {
                 continue;
             }
-            // Selected: pass the activity parameter through by name. Unselected optional: clear the
-            // value so the action call omits the argument (the action's default applies).
-            newProperties[param.name] = { ...property, value: selectedNames.has(param.name) ? param.name : "" };
+            const value = isChecked ? param.name : String(data[`${param.name}${DEFAULT_VALUE_SUFFIX}`] ?? "");
+            newProperties[param.name] = { ...property, value };
         }
-        // Derived return type: drive both the result type and the databinding target type.
-        if (analysis.returnType) {
+
+        // Return type: for dependently-typed actions the user-provided T (activity returns T|error);
+        // otherwise the derived type. Drive both the result type and the databinding target type.
+        const returnType = analysis.dependentReturn
+            ? String(data[RETURN_TYPE_KEY] || DEFAULT_DEPENDENT_RETURN_TYPE)
+            : analysis.returnType;
+        if (returnType) {
             for (const key of ["type", "targetType"]) {
                 if (newProperties[key]) {
-                    newProperties[key] = { ...newProperties[key], value: analysis.returnType };
+                    newProperties[key] = { ...newProperties[key], value: returnType };
                 }
             }
         }
@@ -398,7 +476,7 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 description: data["description"] || "",
                 connection: selectedNodeRef.current?.codedata?.parentSymbol || "",
                 activityParameters,
-                streamElementType: analysis.streamElementType,
+                streamElementType: analysis.dependentReturn ? undefined : analysis.streamElementType,
             });
             if (response?.errorMsg) {
                 console.error(">>> Error creating activity from connection", response);
@@ -426,78 +504,88 @@ export function NewActivityFromConnection(props: NewActivityFromConnectionProps)
                 </LoaderContainer>
             )}
             {!loading && !saving && panelView === PanelView.CONNECTION_LIST && (
-                <NodeList
-                    categories={categories}
-                    onSelect={handleOnSelectNode}
-                    onAddConnection={handleAddConnection}
-                    onClose={onClose}
-                    onBack={onBack}
-                    title={"Connections"}
-                    searchPlaceholder={"Search connections"}
-                    panelBodySx={{ height: "calc(100vh - 140px)" }}
-                />
+                <>
+                    <ActivityWizardSteps activeStep={1} />
+                    <NodeList
+                        categories={categories}
+                        onSelect={handleOnSelectNode}
+                        onAddConnection={handleAddConnection}
+                        onClose={onClose}
+                        onBack={onBack}
+                        title={"Connections"}
+                        searchPlaceholder={"Search connections"}
+                        panelBodySx={{ height: "calc(100vh - 170px)" }}
+                    />
+                </>
             )}
             {!loading && !saving && panelView === PanelView.UNSUPPORTED && (
-                <UnsupportedContainer>
-                    <WarningBox>
-                        <Codicon name="warning" />
+                <>
+                    <ActivityWizardSteps activeStep={2} />
+                    <UnsupportedContainer>
+                        <WarningBox>
+                            <Codicon name="warning" />
+                            <div>
+                                The selected action cannot be generated as an activity automatically.
+                                <ReasonList>
+                                    {unsupportedReasons.map((reason, index) => (
+                                        <li key={index}>{reason}</li>
+                                    ))}
+                                </ReasonList>
+                            </div>
+                        </WarningBox>
                         <div>
-                            The selected action cannot be generated as an activity automatically.
+                            To use this action in a workflow, create the activity manually:
                             <ReasonList>
-                                {unsupportedReasons.map((reason, index) => (
-                                    <li key={index}>{reason}</li>
-                                ))}
+                                <li>Create a new activity.</li>
+                                <li>Configure the activity function signature (data types only).</li>
+                                <li>Inside the activity, call the action with the parameters.</li>
+                                <li>Return the result (anydata) as the activity output.</li>
                             </ReasonList>
                         </div>
-                    </WarningBox>
-                    <div>
-                        To use this action in a workflow, create the activity manually:
-                        <ReasonList>
-                            <li>Create a new activity.</li>
-                            <li>Configure the activity function signature (data types only).</li>
-                            <li>Inside the activity, call the action with the parameters.</li>
-                            <li>Return the result (anydata) as the activity output.</li>
-                        </ReasonList>
-                    </div>
-                    <div>
-                        <Button appearance="secondary" onClick={() => setPanelView(PanelView.CONNECTION_LIST)}>
-                            Back
-                        </Button>
-                    </div>
-                </UnsupportedContainer>
+                        <div>
+                            <Button appearance="secondary" onClick={() => setPanelView(PanelView.CONNECTION_LIST)}>
+                                Back
+                            </Button>
+                        </div>
+                    </UnsupportedContainer>
+                </>
             )}
             {!saving && panelView === PanelView.ACTIVITY_FORM && (
-                <ArtifactForm
-                    preserveFieldOrder={true}
-                    fileName={fileName}
-                    targetLineRange={{ startLine: { line: 0, offset: 0 }, endLine: { line: 0, offset: 0 } }}
-                    fields={fields}
-                    onSubmit={handleActivitySubmit}
-                    onBack={() => setPanelView(PanelView.CONNECTION_LIST)}
-                    submitText={"Create Activity"}
-                    helperPaneSide="left"
-                    injectedComponents={[
-                        {
-                            component: (
-                                <ImplementationBadge
-                                    title={getImplementationString(selectedNodeRef.current?.codedata)}
-                                >
-                                    {selectedNodeRef.current?.metadata?.icon && (
-                                        <img
-                                            src={selectedNodeRef.current.metadata.icon}
-                                            style={{ width: 14, height: 14 }}
-                                            onError={(e) => {
-                                                (e.target as HTMLImageElement).style.display = "none";
-                                            }}
-                                        />
-                                    )}
-                                    {getImplementationString(selectedNodeRef.current?.codedata)}
-                                </ImplementationBadge>
-                            ),
-                            index: 0,
-                        },
-                    ]}
-                />
+                <>
+                    <ActivityWizardSteps activeStep={2} />
+                    <ArtifactForm
+                        preserveFieldOrder={true}
+                        fileName={fileName}
+                        targetLineRange={{ startLine: { line: 0, offset: 0 }, endLine: { line: 0, offset: 0 } }}
+                        fields={fields}
+                        onSubmit={handleActivitySubmit}
+                        onBack={() => setPanelView(PanelView.CONNECTION_LIST)}
+                        submitText={"Create Activity"}
+                        helperPaneSide="left"
+                        onChange={handleFormChange}
+                        injectedComponents={[
+                            {
+                                component: (
+                                    <ImplementationBadge
+                                        title={getImplementationString(selectedNodeRef.current?.codedata)}
+                                    >
+                                        {selectedNodeRef.current?.metadata?.icon && (
+                                            <img
+                                                src={selectedNodeRef.current.metadata.icon}
+                                                style={{ width: 14, height: 14 }}
+                                                onError={(e) => {
+                                                    (e.target as HTMLImageElement).style.display = "none";
+                                                }}
+                                            />
+                                        )}
+                                        {getImplementationString(selectedNodeRef.current?.codedata)}
+                                    </ImplementationBadge>
+                                ),
+                                index: 0,
+                            },
+                        ]}
+                    />
+                </>
             )}
         </>
     );
