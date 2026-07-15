@@ -327,12 +327,14 @@ public class CodeAnalyzer extends NodeVisitor {
         boolean isRun = Constants.Workflow.RUN_METHOD_NAME.equals(methodName)
                 || Constants.Workflow.RUN_DURABLE_AGENT_FUNCTION_NAME.equals(methodName);
         boolean isSendData = Constants.Workflow.SEND_DATA_METHOD_NAME.equals(methodName)
-                || Constants.Workflow.UPDATE_AGENT_FUNCTION_NAME.equals(methodName);
+                || Constants.Workflow.UPDATE_AGENT_FUNCTION_NAME.equals(methodName)
+                || Constants.Workflow.UPDATE_AGENT_ASYNC_FUNCTION_NAME.equals(methodName);
         if (!isRun && !isSendData) {
             return;
         }
         boolean isAgentCall = Constants.Workflow.RUN_DURABLE_AGENT_FUNCTION_NAME.equals(methodName)
-                || Constants.Workflow.UPDATE_AGENT_FUNCTION_NAME.equals(methodName);
+                || Constants.Workflow.UPDATE_AGENT_FUNCTION_NAME.equals(methodName)
+                || Constants.Workflow.UPDATE_AGENT_ASYNC_FUNCTION_NAME.equals(methodName);
         Optional<Symbol> calleeSymbol = semanticModel.symbol(qualifiedName);
         if (calleeSymbol.isEmpty() || !WorkflowUtil.isWorkflowModule(calleeSymbol.get().getModule())) {
             return;

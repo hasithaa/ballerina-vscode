@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.UPDATE_AGENT_DESCRIPTION;
+import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.UPDATE_AGENT_ASYNC_FUNCTION_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.UPDATE_AGENT_FUNCTION_NAME;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.UPDATE_AGENT_LABEL;
 import static io.ballerina.flowmodelgenerator.core.Constants.Workflow.WORKFLOW_MODULE;
@@ -65,11 +66,19 @@ public class DurableAgentUpdateBuilder extends FunctionCall {
     public static final String DATA_LABEL = "Request";
     public static final String DATA_DOC = "The request payload sent to the agent";
 
+    public static final String WAIT_KEY = "waitForAnswer";
+    public static final String WAIT_LABEL = "Wait for Answer";
+    public static final String WAIT_DOC = "Wait for the agent's answer (blocking). Uncheck to send without "
+            + "waiting: the request is durably accepted and an update ID is returned - fetch the answer later "
+            + "with workflow:getAgentUpdateResult. Prefer non-blocking for turns that may take long, e.g. "
+            + "human-task approvals.";
+
     private static final String STRING_TYPE = "string";
     private static final String ANYDATA_TYPE = "anydata";
     private static final String DEFAULT_EVENT = "\"chat\"";
     private static final String DEFAULT_RESULT_VAR = "agentReply";
     private static final String DEFAULT_RESULT_TYPE = "string";
+    private static final String DEFAULT_UPDATE_ID_VAR = "updateId";
 
     @Override
     public void setConcreteConstData() {
@@ -157,6 +166,18 @@ public class DurableAgentUpdateBuilder extends FunctionCall {
                 .stepOut()
                 .addProperty(DATA_KEY);
 
+        properties().custom()
+                .metadata()
+                    .label(WAIT_LABEL)
+                    .description(WAIT_DOC)
+                    .stepOut()
+                .type().fieldType(Property.ValueType.FLAG).ballerinaType("boolean").selected(true).stepOut()
+                .value("true")
+                .editable(true)
+                .optional(true)
+                .stepOut()
+                .addProperty(WAIT_KEY);
+
         // The agent's answer for the turn; updateAgent is dependently typed on the variable type.
         properties().custom()
                 .metadata()
@@ -180,14 +201,22 @@ public class DurableAgentUpdateBuilder extends FunctionCall {
         String eventName = requireValue(sourceBuilder, EVENT_NAME_KEY, "The event name is required");
         String data = requireValue(sourceBuilder, DATA_KEY, "The request payload is required");
 
-        String resultType = sourceBuilder.getProperty(Property.TYPE_KEY)
-                .map(p -> p.value() == null || p.value().toString().isEmpty()
-                        ? DEFAULT_RESULT_TYPE : p.value().toString())
-                .orElse(DEFAULT_RESULT_TYPE);
+        // Non-blocking mode sends the request and binds the update ID instead of the answer;
+        // the answer is fetched later via workflow:getAgentUpdateResult.
+        boolean waitForAnswer = sourceBuilder.getProperty(WAIT_KEY)
+                .map(p -> p.value() == null || !"false".equals(p.value().toString()))
+                .orElse(true);
+
+        String resultType = waitForAnswer
+                ? sourceBuilder.getProperty(Property.TYPE_KEY)
+                        .map(p -> p.value() == null || p.value().toString().isEmpty()
+                                ? DEFAULT_RESULT_TYPE : p.value().toString())
+                        .orElse(DEFAULT_RESULT_TYPE)
+                : STRING_TYPE;
         String variableName = sourceBuilder.getProperty(Property.VARIABLE_KEY)
                 .map(p -> p.value() == null || p.value().toString().isEmpty()
-                        ? DEFAULT_RESULT_VAR : p.value().toString())
-                .orElse(DEFAULT_RESULT_VAR);
+                        ? (waitForAnswer ? DEFAULT_RESULT_VAR : DEFAULT_UPDATE_ID_VAR) : p.value().toString())
+                .orElse(waitForAnswer ? DEFAULT_RESULT_VAR : DEFAULT_UPDATE_ID_VAR);
 
         sourceBuilder.token()
                 .name(resultType)
@@ -198,7 +227,7 @@ public class DurableAgentUpdateBuilder extends FunctionCall {
                 .keyword(SyntaxKind.CHECK_KEYWORD)
                 .name(WORKFLOW_MODULE)
                 .keyword(SyntaxKind.COLON_TOKEN)
-                .name(UPDATE_AGENT_FUNCTION_NAME)
+                .name(waitForAnswer ? UPDATE_AGENT_FUNCTION_NAME : UPDATE_AGENT_ASYNC_FUNCTION_NAME)
                 .keyword(SyntaxKind.OPEN_PAREN_TOKEN)
                 .name(String.join(", ", List.of(agent, agentId, eventName, data)))
                 .keyword(SyntaxKind.CLOSE_PAREN_TOKEN)
