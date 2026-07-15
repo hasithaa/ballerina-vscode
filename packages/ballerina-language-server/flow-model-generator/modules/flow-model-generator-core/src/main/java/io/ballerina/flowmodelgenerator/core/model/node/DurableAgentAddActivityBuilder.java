@@ -75,6 +75,12 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
     public static final String TOOL_DESCRIPTION_DOC =
             "Tells the model what this tool does and when to use it";
 
+    public static final String REQUIRES_APPROVAL_KEY = "requiresApproval";
+    public static final String REQUIRES_APPROVAL_LABEL = "Requires Approval";
+    public static final String REQUIRES_APPROVAL_DOC =
+            "Gate this tool: before the agent runs it, a review activity is created and the agent suspends "
+            + "durably until a reviewer proceeds (optionally editing the arguments) or rejects.";
+
     private static final String NEW_CONNECTION_SENTINEL = "NEW_CONNECTION";
     private static final String ACTIVITY_MODULE_PREFIX = "activity";
 
@@ -138,7 +144,24 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
                 .editable(true)
                 .stepOut()
                 .addProperty(ACTIVITY_KEY);
+        addRequiresApprovalProperty();
         properties().checkError(true);
+    }
+
+    // A FLAG that, when true, emits `requiresApproval = true` so the tool is gated by a review activity.
+    private void addRequiresApprovalProperty() {
+        properties().custom()
+                .metadata()
+                    .label(REQUIRES_APPROVAL_LABEL)
+                    .description(REQUIRES_APPROVAL_DOC)
+                    .stepOut()
+                .type().fieldType(Property.ValueType.FLAG).ballerinaType("boolean").selected(true).stepOut()
+                .value("false")
+                .editable(true)
+                .optional(true)
+                .advanced(true)
+                .stepOut()
+                .addProperty(REQUIRES_APPROVAL_KEY);
     }
 
     /**
@@ -177,6 +200,7 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
         properties().connectionSelector(NEW_CONNECTION_SENTINEL,
                 strategy.searchNodesKind(), strategy.connectors());
         strategy.setFormProperties(this, context);
+        addRequiresApprovalProperty();
         properties().checkError(true);
     }
 
@@ -213,13 +237,17 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
             throw new IllegalStateException("An activity function must be selected");
         }
 
+        String args = activity;
+        if (isRequiresApproval(sourceBuilder)) {
+            args += ", requiresApproval = true";
+        }
         sourceBuilder.token()
                 .keyword(SyntaxKind.CHECK_KEYWORD)
                 .name(ctxParamName)
                 .keyword(SyntaxKind.DOT_TOKEN)
                 .name(REGISTER_ACTIVITY_METHOD_NAME)
                 .keyword(SyntaxKind.OPEN_PAREN_TOKEN)
-                .name(activity)
+                .name(args)
                 .keyword(SyntaxKind.CLOSE_PAREN_TOKEN)
                 .endOfStatement();
 
@@ -261,6 +289,9 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
             callArgs.append(", ").append(TOOL_DESCRIPTION_KEY).append(" = ").append(quoted(toolDescription));
         }
         callArgs.append(", bindings = {").append(String.join(", ", bindingFields)).append("}");
+        if (isRequiresApproval(sourceBuilder)) {
+            callArgs.append(", requiresApproval = true");
+        }
 
         sourceBuilder.token()
                 .keyword(SyntaxKind.CHECK_KEYWORD)
@@ -286,6 +317,12 @@ public class DurableAgentAddActivityBuilder extends CallBuilder {
             return null;
         }
         return ActivityCallBuilder.BUILTIN_STRATEGY_MAP.get(codedata.symbol());
+    }
+
+    private static boolean isRequiresApproval(SourceBuilder sourceBuilder) {
+        return sourceBuilder.getProperty(REQUIRES_APPROVAL_KEY)
+                .map(p -> p.value() != null && "true".equals(p.value().toString()))
+                .orElse(false);
     }
 
     private static String stringPropertyValue(SourceBuilder sourceBuilder, String key) {
