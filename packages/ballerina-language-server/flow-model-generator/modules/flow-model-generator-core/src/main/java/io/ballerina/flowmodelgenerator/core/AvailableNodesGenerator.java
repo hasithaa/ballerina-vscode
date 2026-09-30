@@ -585,9 +585,8 @@ public class AvailableNodesGenerator {
         List<Item> workflowNodes = new ArrayList<>();
 
         if (isInWorkflowFunction) {
-            // Inside a workflow function the single Workflow section groups its items by
-            // functionality: durable Steps, Child Workflows, and the (advanced) context
-            // utility functions.
+            // Inside a workflow function the Workflow section holds the four building blocks as
+            // tiles and every other context method as one connection-style list.
             Category steps = new Category.Builder(null).name(Category.Name.WORKFLOW_STEPS)
                     .items(List.of(
                             workflowNode(Workflow.CALL_ACTIVITY_LABEL, Workflow.CALL_ACTIVITY_DESCRIPTION,
@@ -600,50 +599,36 @@ public class AvailableNodesGenerator {
                                     Workflow.SLEEP_METHOD_NAME)))
                     .build();
 
-            Category childWorkflows = new Category.Builder(null).name(Category.Name.CHILD_WORKFLOWS)
-                    .items(List.of(
-                            workflowNode(Workflow.RUN_CHILD_WORKFLOW_LABEL, Workflow.RUN_CHILD_WORKFLOW_DESCRIPTION,
-                                    NodeKind.CHILD_WORKFLOW_RUN,
-                                    Workflow.RUN_CHILD_WORKFLOW_METHOD_NAME),
-                            workflowNode(Workflow.CALL_CHILD_WORKFLOW_LABEL, Workflow.CALL_CHILD_WORKFLOW_DESCRIPTION,
-                                    NodeKind.CHILD_WORKFLOW_CALL,
-                                    Workflow.CALL_CHILD_WORKFLOW_METHOD_NAME),
-                            workflowNode(Workflow.WAIT_CHILD_WORKFLOW_LABEL, Workflow.WAIT_CHILD_WORKFLOW_DESCRIPTION,
-                                    NodeKind.CHILD_WORKFLOW_WAIT,
-                                    Workflow.WAIT_CHILD_WORKFLOW_METHOD_NAME),
-                            workflowNode(Workflow.SEND_DATA_CHILD_WORKFLOW_LABEL,
-                                    Workflow.SEND_DATA_CHILD_WORKFLOW_DESCRIPTION,
-                                    NodeKind.CHILD_WORKFLOW_SEND_DATA,
-                                    Workflow.SEND_DATA_CHILD_WORKFLOW_METHOD_NAME)))
-                    .build();
-
             Category workflowFunctions = new Category.Builder(null).name(Category.Name.WORKFLOW_FUNCTIONS)
+                    .metadata().icon(Workflow.CONTEXT_ICON).stepOut()
                     .items(List.of(
-                            workflowNode(Workflow.CURRENT_TIME_LABEL, Workflow.CURRENT_TIME_DESCRIPTION,
-                                    NodeKind.WORKFLOW_CURRENT_TIME,
-                                    Workflow.CURRENT_TIME_METHOD_NAME),
-                            workflowNode(Workflow.IS_REPLAYING_LABEL, Workflow.IS_REPLAYING_DESCRIPTION,
-                                    NodeKind.WORKFLOW_IS_REPLAYING,
-                                    Workflow.IS_REPLAYING_METHOD_NAME),
-                            workflowNode(Workflow.GET_WORKFLOW_ID_LABEL, Workflow.GET_WORKFLOW_ID_DESCRIPTION,
-                                    NodeKind.WORKFLOW_GET_ID,
-                                    Workflow.GET_WORKFLOW_ID_METHOD_NAME),
-                            workflowNode(Workflow.GET_WORKFLOW_TYPE_LABEL, Workflow.GET_WORKFLOW_TYPE_DESCRIPTION,
-                                    NodeKind.WORKFLOW_GET_TYPE,
-                                    Workflow.GET_WORKFLOW_TYPE_METHOD_NAME),
-                            workflowNode(Workflow.LAST_HUMAN_TASK_COMPLETION_LABEL,
+                            contextMethodNode(Workflow.RUN_CHILD_WORKFLOW_METHOD_NAME,
+                                    Workflow.RUN_CHILD_WORKFLOW_DESCRIPTION, NodeKind.CHILD_WORKFLOW_RUN),
+                            contextMethodNode(Workflow.CALL_CHILD_WORKFLOW_METHOD_NAME,
+                                    Workflow.CALL_CHILD_WORKFLOW_DESCRIPTION, NodeKind.CHILD_WORKFLOW_CALL),
+                            contextMethodNode(Workflow.WAIT_CHILD_WORKFLOW_METHOD_NAME,
+                                    Workflow.WAIT_CHILD_WORKFLOW_DESCRIPTION, NodeKind.CHILD_WORKFLOW_WAIT),
+                            contextMethodNode(Workflow.SEND_DATA_CHILD_WORKFLOW_METHOD_NAME,
+                                    Workflow.SEND_DATA_CHILD_WORKFLOW_DESCRIPTION,
+                                    NodeKind.CHILD_WORKFLOW_SEND_DATA),
+                            contextMethodNode(Workflow.CURRENT_TIME_METHOD_NAME, Workflow.CURRENT_TIME_DESCRIPTION,
+                                    NodeKind.WORKFLOW_CURRENT_TIME),
+                            contextMethodNode(Workflow.IS_REPLAYING_METHOD_NAME, Workflow.IS_REPLAYING_DESCRIPTION,
+                                    NodeKind.WORKFLOW_IS_REPLAYING),
+                            contextMethodNode(Workflow.GET_WORKFLOW_ID_METHOD_NAME,
+                                    Workflow.GET_WORKFLOW_ID_DESCRIPTION, NodeKind.WORKFLOW_GET_ID),
+                            contextMethodNode(Workflow.GET_WORKFLOW_TYPE_METHOD_NAME,
+                                    Workflow.GET_WORKFLOW_TYPE_DESCRIPTION, NodeKind.WORKFLOW_GET_TYPE),
+                            contextMethodNode(Workflow.LAST_HUMAN_TASK_COMPLETION_METHOD_NAME,
                                     Workflow.LAST_HUMAN_TASK_COMPLETION_DESCRIPTION,
-                                    NodeKind.WORKFLOW_LAST_HUMAN_TASK_COMPLETION,
-                                    Workflow.LAST_HUMAN_TASK_COMPLETION_METHOD_NAME),
-                            workflowNode(Workflow.LAST_REVIEW_DECISION_LABEL,
+                                    NodeKind.WORKFLOW_LAST_HUMAN_TASK_COMPLETION),
+                            contextMethodNode(Workflow.LAST_REVIEW_DECISION_METHOD_NAME,
                                     Workflow.LAST_REVIEW_DECISION_DESCRIPTION,
-                                    NodeKind.WORKFLOW_LAST_REVIEW_DECISION,
-                                    Workflow.LAST_REVIEW_DECISION_METHOD_NAME)))
+                                    NodeKind.WORKFLOW_LAST_REVIEW_DECISION)))
                     .build();
 
             workflowNodes.add(steps);
             workflowNodes.add(workflowFunctions);
-            workflowNodes.add(childWorkflows);
         } else {
             // Outside workflow functions the items follow the integration's artifacts:
             // workflow functions bring the workflow verbs, durable agents bring theirs.
@@ -684,6 +669,12 @@ public class AvailableNodesGenerator {
                         .data(Workflow.METHOD_KEY, method).build(),
                 new Codedata.Builder<>(null).node(kind).build(),
                 true);
+    }
+
+    // A context method listed like a connection action: the method name is the label, as for any
+    // connection, so the panel formats it and the tooltip carries the description.
+    private static AvailableNode contextMethodNode(String method, String description, NodeKind kind) {
+        return workflowNode(method, description, kind);
     }
 
     private void setStopNode(NonTerminalNode node) {

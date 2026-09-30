@@ -201,7 +201,13 @@ function convertDiagramCategoryToSidePanelCategory(category: Category, functionT
     return {
         title: category.metadata.label,
         description: category.metadata.description,
-        icon: <ConnectorIcon url={icon} style={{ width: "20px", height: "20px", fontSize: "20px" }} codedata={codedata} connectorType={connectorType} />,
+        // A codicon-style icon on the category itself names its own icon; otherwise the first item's
+        // connector icon stands for the group, as for a connection.
+        icon: category.metadata.icon?.startsWith("bi-") ? (
+            <Icon name={category.metadata.icon} sx={{ fontSize: "20px", width: "20px", height: "20px" }} />
+        ) : (
+            <ConnectorIcon url={icon} style={{ width: "20px", height: "20px", fontSize: "20px" }} codedata={codedata} connectorType={connectorType} />
+        ),
         items: items,
     };
 }

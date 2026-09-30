@@ -82,113 +82,22 @@
         {
           "metadata": {
             "label": "Workflow Functions",
-            "description": "Utility functions of the workflow context",
+            "description": "Methods of the workflow context: child workflows and reads",
             "keywords": [
+              "Context",
+              "Child",
               "Utility",
               "Workflow",
               "Time",
               "Replay"
-            ]
+            ],
+            "icon": "bi-workflow"
           },
           "items": [
             {
               "metadata": {
-                "label": "Current Time",
-                "description": "Deterministic current time, safe to use inside workflow logic",
-                "data": {
-                  "method": "currentTime"
-                }
-              },
-              "codedata": {
-                "node": "WORKFLOW_CURRENT_TIME"
-              },
-              "enabled": true
-            },
-            {
-              "metadata": {
-                "label": "Is Replaying",
-                "description": "Whether the workflow is currently replaying recorded history",
-                "data": {
-                  "method": "isReplaying"
-                }
-              },
-              "codedata": {
-                "node": "WORKFLOW_IS_REPLAYING"
-              },
-              "enabled": true
-            },
-            {
-              "metadata": {
-                "label": "Workflow ID",
-                "description": "The unique ID of this workflow instance",
-                "data": {
-                  "method": "getWorkflowId"
-                }
-              },
-              "codedata": {
-                "node": "WORKFLOW_GET_ID"
-              },
-              "enabled": true
-            },
-            {
-              "metadata": {
-                "label": "Workflow Type",
-                "description": "The type name of this workflow",
-                "data": {
-                  "method": "getWorkflowType"
-                }
-              },
-              "codedata": {
-                "node": "WORKFLOW_GET_TYPE"
-              },
-              "enabled": true
-            },
-            {
-              "metadata": {
-                "label": "Last Completion",
-                "description": "The completion of the most recently completed human task, with who completed it",
-                "data": {
-                  "method": "lastHumanTaskCompletion"
-                }
-              },
-              "codedata": {
-                "node": "WORKFLOW_LAST_HUMAN_TASK_COMPLETION"
-              },
-              "enabled": true
-            },
-            {
-              "metadata": {
-                "label": "Last Decision",
-                "description": "The decision of the most recent review task, with who decided it",
-                "data": {
-                  "method": "lastReviewDecision"
-                }
-              },
-              "codedata": {
-                "node": "WORKFLOW_LAST_REVIEW_DECISION"
-              },
-              "enabled": true
-            }
-          ]
-        },
-        {
-          "metadata": {
-            "label": "Child Workflows",
-            "description": "Compose child workflows from this workflow",
-            "keywords": [
-              "Child",
-              "Workflow",
-              "Composition"
-            ]
-          },
-          "items": [
-            {
-              "metadata": {
-                "label": "Run Child",
-                "description": "Start a child workflow and continue without waiting for its result",
-                "data": {
-                  "method": "runChildWorkflow"
-                }
+                "label": "runChildWorkflow",
+                "description": "Start a child workflow and continue without waiting for its result"
               },
               "codedata": {
                 "node": "CHILD_WORKFLOW_RUN"
@@ -197,11 +106,8 @@
             },
             {
               "metadata": {
-                "label": "Call Child",
-                "description": "Run a child workflow and durably wait for its result",
-                "data": {
-                  "method": "callWorkflow"
-                }
+                "label": "callWorkflow",
+                "description": "Run a child workflow and durably wait for its result"
               },
               "codedata": {
                 "node": "CHILD_WORKFLOW_CALL"
@@ -210,11 +116,8 @@
             },
             {
               "metadata": {
-                "label": "Await Child",
-                "description": "Durably wait for a started child workflow's result",
-                "data": {
-                  "method": "waitForChildWorkflow"
-                }
+                "label": "waitForChildWorkflow",
+                "description": "Durably wait for a started child workflow's result"
               },
               "codedata": {
                 "node": "CHILD_WORKFLOW_WAIT"
@@ -223,14 +126,71 @@
             },
             {
               "metadata": {
-                "label": "Send to Child",
-                "description": "Send a data event to a running child workflow",
-                "data": {
-                  "method": "sendDataToChildWorkflow"
-                }
+                "label": "sendDataToChildWorkflow",
+                "description": "Send a data event to a running child workflow"
               },
               "codedata": {
                 "node": "CHILD_WORKFLOW_SEND_DATA"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "currentTime",
+                "description": "Deterministic current time, safe to use inside workflow logic"
+              },
+              "codedata": {
+                "node": "WORKFLOW_CURRENT_TIME"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "isReplaying",
+                "description": "Whether the workflow is currently replaying recorded history"
+              },
+              "codedata": {
+                "node": "WORKFLOW_IS_REPLAYING"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "getWorkflowId",
+                "description": "The unique ID of this workflow instance"
+              },
+              "codedata": {
+                "node": "WORKFLOW_GET_ID"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "getWorkflowType",
+                "description": "The type name of this workflow"
+              },
+              "codedata": {
+                "node": "WORKFLOW_GET_TYPE"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "lastHumanTaskCompletion",
+                "description": "The completion of the most recently completed human task, with who completed it"
+              },
+              "codedata": {
+                "node": "WORKFLOW_LAST_HUMAN_TASK_COMPLETION"
+              },
+              "enabled": true
+            },
+            {
+              "metadata": {
+                "label": "lastReviewDecision",
+                "description": "The decision of the most recent review task, with who decided it"
+              },
+              "codedata": {
+                "node": "WORKFLOW_LAST_REVIEW_DECISION"
               },
               "enabled": true
             }

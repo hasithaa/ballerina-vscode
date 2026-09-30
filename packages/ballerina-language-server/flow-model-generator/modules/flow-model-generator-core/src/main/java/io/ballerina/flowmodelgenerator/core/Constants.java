@@ -176,6 +176,8 @@ public class Constants {
         public static final String CONTEXT_TASK_NAME_KEY = "taskName";
         // Metadata key carrying the context method a palette node stands for, e.g. "awaitHumanTask"
         public static final String METHOD_KEY = "method";
+        // Palette icon of the connection-style Workflow Functions list, resolved by the panel
+        public static final String CONTEXT_ICON = "bi-workflow";
         public static final String CONTEXT_ASSIGNS_EXISTING_KEY = "assignsExisting";
         public static final String CONTEXT_TASK_NAME_LABEL = "Task Name";
         public static final String CONTEXT_TASK_NAME_DESCRIPTION =

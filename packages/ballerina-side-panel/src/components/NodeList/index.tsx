@@ -368,9 +368,9 @@ namespace S {
     `;
 }
 
-// Subcategories rendered as chevron-collapsible sections that start collapsed,
-// in addition to the generic "More" section.
-const COLLAPSED_SUBCATEGORIES = ["Child Workflows"];
+// Subcategories rendered like a connection: one collapsible card whose items are listed in a
+// single column, so a group of context methods needs no tile of its own per method.
+const CONNECTION_SUBCATEGORIES = ["Workflow Functions"];
 
 interface NodeListProps {
     categories: Category[];
@@ -704,12 +704,25 @@ export function NodeList(props: NodeListProps) {
                     </S.Grid>
                 )}
                 {subcategories.map((subcategory, index) => {
-                    // Chevron-collapsible subcategories that start collapsed: the generic
-                    // "More" section and advanced groups like the workflow context functions.
-                    const isCollapsibleSubcategory =
-                        subcategory.title === "More" || COLLAPSED_SUBCATEGORIES.includes(subcategory.title);
+                    if (CONNECTION_SUBCATEGORIES.includes(subcategory.title)) {
+                        return (
+                            <S.Grid key={subcategory.title + index} columns={1}>
+                                <GroupList
+                                    category={subcategory}
+                                    expand={searchText?.length > 0 ? !searchCollapsedConnections[subcategory.title] : undefined}
+                                    onToggle={(isOpen) => {
+                                        if (searchText?.length > 0) {
+                                            setSearchCollapsedConnections((prev) => ({ ...prev, [subcategory.title]: !isOpen }));
+                                        }
+                                    }}
+                                    onSelect={(node) => handleAddNode(node, parentCategoryTitle)}
+                                />
+                            </S.Grid>
+                        );
+                    }
 
-                    if (isCollapsibleSubcategory) {
+                    // The generic "More" section is a chevron-collapsible group that starts collapsed.
+                    if (subcategory.title === "More") {
                         const sectionKey = `${parentCategoryTitle}-${subcategory.title}`;
                         const isExpanded = searchText?.length > 0
                             ? !searchCollapsedMoreSections[sectionKey]
@@ -719,7 +732,7 @@ export function NodeList(props: NodeListProps) {
                         return (
                             <S.AdvancedSubcategoryContainer key={subcategory.title + index} isLast={isLastSubcategory}>
                                 <S.AdvancedSubcategoryHeader onClick={() => toggleMoreSection(sectionKey)}>
-                                    <S.AdvancedSubTitle muted={subcategory.title === "More"}>{subcategory.title}</S.AdvancedSubTitle>
+                                    <S.AdvancedSubTitle muted>{subcategory.title}</S.AdvancedSubTitle>
                                     <Button
                                         appearance="icon"
                                         sx={{
@@ -955,7 +968,7 @@ export function NodeList(props: NodeListProps) {
                                                         // chevron-collapsible treatment, use getCategoryContainer
                                                         group.items.filter((item) => item != null).every((item) => !("id" in item)) &&
                                                         !(group.items as Category[]).some(
-                                                            (item) => item && (item.title === "More" || COLLAPSED_SUBCATEGORIES.includes(item.title))
+                                                            (item) => item && (item.title === "More" || CONNECTION_SUBCATEGORIES.includes(item.title))
                                                         )
                                                         ? getCategoryContainer(
                                                               group.items as Category[],
