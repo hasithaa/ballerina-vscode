@@ -23,12 +23,13 @@ import * as helpers from './utils/helpers';
 import { extensionsFolder, newProjectPath, zipProjectSnapshot } from './utils/helpers';
 import { downloadExtensionFromMarketplace } from '@wso2/playwright-vscode-tester';
 import fs from 'fs';
-import { execSync } from 'child_process';
+import { ChildProcess, execSync } from 'child_process';
 import path from 'path';
 const videosFolder = path.join(__dirname, '..', 'test-resources', 'videos');
 const VIDEO_SAVE_TIMEOUT_MS = Number(process.env.BI_E2E_VIDEO_SAVE_TIMEOUT_MS ?? 20000);
 const PAGE_CLOSE_TIMEOUT_MS = Number(process.env.BI_E2E_PAGE_CLOSE_TIMEOUT_MS ?? 10000);
 const ELECTRON_EXIT_WAIT_MS = Number(process.env.BI_E2E_ELECTRON_EXIT_WAIT_MS ?? 5000);
+const WORKER_FORCE_EXIT_MS = Number(process.env.BI_E2E_WORKER_FORCE_EXIT_MS ?? 8000);
 
 // Whether a process id is still running.
 function isAlive(pid: number): boolean {
@@ -41,13 +42,13 @@ function isAlive(pid: number): boolean {
 }
 
 /**
- * Kills VS Code with everything it started. Playwright launches Electron as the leader of its own process group
- * (not on Windows), so signalling the group also ends the extension host and the language servers it spawned,
- * which otherwise outlive a killed main process. The pid recorded at launch is the fallback for an application
+ * Kills VS Code with its extension host and language servers. Playwright launches Electron as the leader of its
+ * own process group (not on Windows), so signalling the group also ends those children, which otherwise outlive a
+ * killed main process. The pid recorded at launch is the fallback for an application
  * handle that is already disposed, where `process()` throws.
  */
 async function terminateVsCode(): Promise<void> {
-    let electronProcess: import('child_process').ChildProcess | undefined;
+    let electronProcess: ChildProcess | undefined;
     try {
         electronProcess = helpers.vscode?.process?.();
     } catch {
@@ -82,17 +83,13 @@ async function terminateVsCode(): Promise<void> {
         try {
             process.kill(-pid, 'SIGKILL');
         } catch {
-            try {
-                process.kill(pid, 'SIGKILL');
-            } catch {
-                // Already gone.
-            }
+            // No such group: the pid no longer belongs to our Electron, so signalling it alone could hit an
+            // unrelated process.
         }
     }
     await exited;
     console.log(isAlive(pid) ? '⚠️  VS Code Electron app still running after SIGKILL' : '✅ VS Code Electron app terminated');
 }
-const WORKER_FORCE_EXIT_MS = Number(process.env.BI_E2E_WORKER_FORCE_EXIT_MS ?? 8000);
 
 async function withTimeout<T>(operation: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
     return Promise.race([
@@ -402,6 +399,10 @@ test.afterAll(async () => {
     //   handles in a state that keeps the worker's event loop alive.
     //   We've already captured the screenshot, project snapshot, and video
     //   above — nothing else needs a clean quit here.
+    //   `terminateVsCode` kills Electron's whole process group (`taskkill /T`
+    //   on Windows), so the extension host and language servers die with
+    //   it. If the application handle is already disposed, it falls back to
+    //   the pid recorded at launch.
     //
     // Why closing at all is REQUIRED (not optional):
     //   `_electron.launch()` opens an IPC pipe between the Playwright
