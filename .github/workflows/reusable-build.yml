@@ -278,7 +278,8 @@ jobs:
       fail-fast: false
       matrix:
         group: [group1, group2, group3, group4, group5]
-    runs-on: ${{ inputs.runOnAWS && inputs.awsRunnerId || 'ubuntu-latest' }}
+    # Playwright cannot install Chromium on ubuntu-latest (26.04) yet, so the e2e groups stay on 24.04.
+    runs-on: ${{ inputs.runOnAWS && inputs.awsRunnerId || 'ubuntu-24.04' }}
     steps:
       - name: Restore build
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
